@@ -131,3 +131,8 @@ coverage/
 .prettierignore
 
 .github
+
+# Ignore all markdown files
+*.md
+# Except the repository README
+!README.md
