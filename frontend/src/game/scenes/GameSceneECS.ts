@@ -202,7 +202,8 @@ export class GameScene extends Phaser.Scene {
         
         const damage = enemySprite.getData('damage') as number;
         
-        const tookDamage = this.healthSystem.takeDamage(
+        // Apply damage
+        const isDead = this.healthSystem.takeDamage(
           this.player,
           playerHealth,
           damage,
@@ -210,30 +211,28 @@ export class GameScene extends Phaser.Scene {
           currentTime
         );
         
-        if (tookDamage) {
-          // Activate iframes
-          this.healthSystem.activateInvincibility(
-            this.player,
-            playerHealth,
-            PLAYER_CONFIG.INVINCIBILITY_DURATION,
-            this,
-            currentTime
-          );
-          
-          // Knockback
-          const angle = Phaser.Math.Angle.Between(
-            enemySprite.x,
-            enemySprite.y,
-            this.player.x,
-            this.player.y
-          );
-          const knockback = PLAYER_CONFIG.KNOCKBACK_FORCE;
-          this.player.setVelocity(Math.cos(angle) * knockback, Math.sin(angle) * knockback);
-          
-          // Check game over
-          if (this.healthSystem.isDead(playerHealth)) {
-            this.gameOver();
-          }
+        // Always activate iframes after taking damage (regardless of death)
+        this.healthSystem.activateInvincibility(
+          this.player,
+          playerHealth,
+          PLAYER_CONFIG.INVINCIBILITY_DURATION,
+          this,
+          currentTime
+        );
+        
+        // Knockback
+        const angle = Phaser.Math.Angle.Between(
+          enemySprite.x,
+          enemySprite.y,
+          this.player.x,
+          this.player.y
+        );
+        const knockback = PLAYER_CONFIG.KNOCKBACK_FORCE;
+        this.player.setVelocity(Math.cos(angle) * knockback, Math.sin(angle) * knockback);
+        
+        // Check game over
+        if (isDead) {
+          this.gameOver();
         }
       },
       undefined,

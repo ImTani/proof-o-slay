@@ -37,18 +37,21 @@ export class HealthSystem {
   
   /**
    * Activate invincibility frames
+   * Note: Uses Phaser time (scene.time) for visual effects, but sets
+   * invincibilityEndTime using system time (Date.now()) for collision checking
    */
   activateInvincibility(
     sprite: Phaser.Physics.Arcade.Sprite,
     health: HealthComponent,
     duration: number,
     scene: Phaser.Scene,
-    time: number
+    systemTime: number
   ): void {
     health.isInvincible = true;
-    health.invincibilityEndTime = time + duration;
+    // Use system time (Date.now()) for invincibility end time
+    health.invincibilityEndTime = systemTime + duration;
     
-    // Flashing effect
+    // Flashing effect using Phaser time (for visual feedback only)
     let flashCount = 0;
     const totalFlashes = Math.floor(duration / GRAPHICS_CONFIG.IFRAME_FLASH_INTERVAL);
     
@@ -65,7 +68,7 @@ export class HealthSystem {
       },
     });
     
-    // End invincibility
+    // End invincibility using Phaser time (for cleanup only)
     scene.time.delayedCall(duration, () => {
       health.isInvincible = false;
       sprite.clearTint();
