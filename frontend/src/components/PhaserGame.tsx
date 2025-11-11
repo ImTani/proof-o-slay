@@ -45,12 +45,15 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({ upgrades, onGameOver }) 
       id="game-container"
       ref={containerRef}
       style={{
-        width: '800px',
-        height: '600px',
-        margin: '0 auto',
-        border: '2px solid #4287f5',
-        borderRadius: '8px',
+        width: '100%',
+        height: '100%',
+        maxWidth: '100vw',
+        maxHeight: '100vh',
+        aspectRatio: '16 / 9',
+        margin: 0,
+        padding: 0,
         overflow: 'hidden',
+        position: 'relative',
       }}
     />
   );

@@ -3,6 +3,7 @@ import type { GameConfig } from '../config';
 
 // Game Configuration
 import { 
+  DISPLAY_CONFIG,
   WORLD_CONFIG, 
   WAVE_CONFIG, 
   PLAYER_CONFIG,
@@ -16,12 +17,15 @@ import { AISystem } from '../systems/AISystem';
 import { HealthSystem } from '../systems/HealthSystem';
 import { ProjectileSystem } from '../systems/ProjectileSystem';
 import { WeaponSystem } from '../systems/WeaponSystem';
+import { FocusManager } from '../systems/FocusManager';
+import { GameManager } from '../systems/GameManager';
 
 // Entities
 import { createPlayerEntity, type PlayerUpgrades } from '../entities/PlayerEntity';
 import { createEnemyEntity } from '../entities/EnemyEntity';
 import { createBulletEntity } from '../entities/BulletEntity';
 import { createShardEntity } from '../entities/ShardEntity';
+import { createButton, type ButtonEntity } from '../entities/ButtonEntity';
 
 // Components
 import type { HealthComponent } from '../components/HealthComponent';
@@ -41,6 +45,7 @@ export class GameScene extends Phaser.Scene {
   private healthSystem!: HealthSystem;
   private projectileSystem!: ProjectileSystem;
   private weaponSystem!: WeaponSystem;
+  private focusManager!: FocusManager;
   
   // Entity groups
   private player!: Phaser.Physics.Arcade.Sprite;
@@ -52,6 +57,14 @@ export class GameScene extends Phaser.Scene {
   private shardCount = 0;
   private currentWave = 0;
   private enemiesAlive = 0;
+  private gameManager: GameManager;
+  
+  // Pause menu UI
+  private pauseOverlay!: Phaser.GameObjects.Rectangle | null;
+  private pauseTitle!: Phaser.GameObjects.Text | null;
+  private pauseResumeButton!: ButtonEntity | null;
+  private pauseMenuButton!: ButtonEntity | null;
+  private escKey!: Phaser.Input.Keyboard.Key;
   
   // UI
   private healthBarBg!: Phaser.GameObjects.Rectangle;
@@ -64,6 +77,7 @@ export class GameScene extends Phaser.Scene {
   
   constructor() {
     super({ key: 'GameScene' });
+    this.gameManager = GameManager.getInstance();
   }
   
   init() {
@@ -71,12 +85,13 @@ export class GameScene extends Phaser.Scene {
     this.gameConfig = this.registry.get('gameConfig');
     
     // Initialize systems
-    this.inputSystem = new InputSystem();
+    this.inputSystem = new InputSystem(this);
     this.movementSystem = new MovementSystem();
     this.aiSystem = new AISystem();
     this.healthSystem = new HealthSystem();
     this.projectileSystem = new ProjectileSystem();
     this.weaponSystem = new WeaponSystem();
+    this.focusManager = new FocusManager(this);
   }
   
   preload() {
@@ -91,8 +106,8 @@ export class GameScene extends Phaser.Scene {
     };
     this.player = createPlayerEntity(
       this,
-      WORLD_CONFIG.WIDTH / 2,
-      WORLD_CONFIG.HEIGHT / 2,
+      DISPLAY_CONFIG.WIDTH / 2,
+      DISPLAY_CONFIG.HEIGHT / 2,
       upgrades
     );
     
@@ -112,15 +127,35 @@ export class GameScene extends Phaser.Scene {
     // Create UI
     this.createUI();
     
+    // Set up ESC key for pause menu
+    this.escKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+    this.escKey.on('down', () => {
+      this.togglePause();
+    });
+    
+    // Initialize pause menu UI elements (hidden by default)
+    this.pauseOverlay = null;
+    this.pauseTitle = null;
+    this.pauseResumeButton = null;
+    this.pauseMenuButton = null;
+    
     // Start first wave
     this.startNextWave();
   }
   
   update(time: number) {
+    // Handle pause menu focus navigation
+    if (this.gameManager.isPaused()) {
+      this.focusManager.update(time);
+      return;
+    }
+    
     const playerHealth = this.player.getData('health') as HealthComponent;
     
     // Skip update if dead
     if (this.healthSystem.isDead(playerHealth)) {
+      // Still update focus manager for game over screen
+      this.focusManager.update(time);
       return;
     }
     
@@ -132,13 +167,20 @@ export class GameScene extends Phaser.Scene {
     this.inputSystem.update(this.player, playerInput, playerMovement);
     this.movementSystem.update(this.player, playerMovement);
     
-    // Update weapon position and rotation (follows cursor)
+    // Update weapon position and rotation
     const weaponSpriteComp = this.player.getData('weaponSprite') as WeaponSpriteComponent;
-    this.weaponSystem.update(this.player, weaponSpriteComp, pointer.worldX, pointer.worldY);
     
-    // Handle shooting
+    // Get aim direction from gamepad or mouse
+    const aimDir = this.inputSystem.getAimDirection(this.player, pointer);
+    if (aimDir) {
+      const targetX = this.player.x + aimDir.x * 100; // Project aim 100 pixels out
+      const targetY = this.player.y + aimDir.y * 100;
+      this.weaponSystem.update(this.player, weaponSpriteComp, targetX, targetY);
+    }
+    
+    // Handle shooting (gamepad or mouse)
     const playerWeapon = this.player.getData('weapon') as WeaponComponent;
-    if (pointer.isDown) {
+    if (this.inputSystem.isFirePressed(pointer)) {
       const timeSinceLastShot = time - playerWeapon.lastShotTime;
       if (timeSinceLastShot > playerWeapon.fireRate) {
         this.shootBullet(this.player, playerWeapon, time);
@@ -389,32 +431,40 @@ export class GameScene extends Phaser.Scene {
     this.healthBarFill = this.add.rectangle(0, 0, hpBar.width, hpBar.height, hpBar.healthyColor);
     this.healthBarFill.setOrigin(0, 0.5);
     
-    // UI text
+    // UI text - using fixed padding from edges for scalability
+    const padding = 20;
+    const lineHeight = 35;
     const playerHealth = this.player.getData('health') as HealthComponent;
     const textStyle = UI_CONFIG.TEXT;
     
     this.healthText = this.add.text(
-      10,
-      10,
+      padding,
+      padding,
       `HP: ${playerHealth.current}/${playerHealth.max}`,
       { fontSize: textStyle.fontSize, color: textStyle.healthColor, fontFamily: textStyle.fontFamily }
     );
     
-    this.shardText = this.add.text(10, 35, `Shards: ${this.shardCount}`, {
+    this.shardText = this.add.text(padding, padding + lineHeight, `Shards: ${this.shardCount}`, {
       fontSize: textStyle.fontSize,
       color: textStyle.shardColor,
       fontFamily: textStyle.fontFamily,
     });
     
-    this.waveText = this.add.text(10, 60, `Wave: ${this.currentWave}`, {
+    this.waveText = this.add.text(padding, padding + lineHeight * 2, `Wave: ${this.currentWave}`, {
       fontSize: textStyle.fontSize,
       color: textStyle.waveColor,
       fontFamily: textStyle.fontFamily,
     });
     
+    // Fix to camera so they don't scroll
     this.healthText.setScrollFactor(0);
     this.shardText.setScrollFactor(0);
     this.waveText.setScrollFactor(0);
+    
+    // Set depth to ensure UI is on top
+    this.healthText.setDepth(1000);
+    this.shardText.setDepth(1000);
+    this.waveText.setDepth(1000);
   }
   
   private updateHealthBar(): void {
@@ -453,8 +503,9 @@ export class GameScene extends Phaser.Scene {
     
     this.physics.pause();
     
-    const centerX = WORLD_CONFIG.WIDTH / 2;
-    const centerY = WORLD_CONFIG.HEIGHT / 2;
+    // Use DISPLAY_CONFIG for centered positioning
+    const centerX = DISPLAY_CONFIG.WIDTH / 2;
+    const centerY = DISPLAY_CONFIG.HEIGHT / 2;
     const gameOverConfig = UI_CONFIG.GAME_OVER;
     
     const gameOverText = this.add.text(
@@ -470,6 +521,8 @@ export class GameScene extends Phaser.Scene {
       }
     );
     gameOverText.setOrigin(0.5);
+    gameOverText.setScrollFactor(0);
+    gameOverText.setDepth(2000);
     
     const shardsText = this.add.text(
       centerX,
@@ -484,13 +537,182 @@ export class GameScene extends Phaser.Scene {
       }
     );
     shardsText.setOrigin(0.5);
+    shardsText.setScrollFactor(0);
+    shardsText.setDepth(2000);
     
-    // Call React callback
-    if (this.gameConfig.callbacks.onGameOver) {
-      this.time.delayedCall(1000, () => {
-        this.gameConfig.callbacks.onGameOver(this.shardCount);
-      });
+    // Play Again button - using button factory
+    const playAgainButton = createButton(
+      this,
+      centerX - 150,
+      centerY + 120,
+      'PLAY AGAIN',
+      () => this.scene.restart(),
+      {
+        style: 'primary',
+        fontSize: '28px',
+        icon: '▶',
+        focusIndex: 0,
+        depth: 2000,
+      }
+    );
+    
+    // Menu button - using button factory
+    const menuButton = createButton(
+      this,
+      centerX + 150,
+      centerY + 120,
+      'MENU',
+      () => this.scene.start('MenuScene'),
+      {
+        style: 'secondary',
+        fontSize: '28px',
+        icon: '⬅',
+        focusIndex: 1,
+        depth: 2000,
+      }
+    );
+    
+    // Clear focus manager and register game over buttons
+    this.focusManager.clear();
+    this.focusManager.register(playAgainButton.text);
+    this.focusManager.register(menuButton.text);
+    
+    // Hint text
+    const hintText = this.add.text(
+      centerX,
+      centerY + 200,
+      'Use Arrow Keys / Tab / D-pad to navigate',
+      {
+        fontSize: '18px',
+        color: '#666666',
+        fontFamily: 'Arial',
+      }
+    );
+    hintText.setOrigin(0.5);
+    hintText.setScrollFactor(0);
+    hintText.setDepth(2000);
+  }
+  
+  private togglePause(): void {
+    if (this.gameManager.isPaused()) {
+      this.resumeGame();
+    } else {
+      this.pauseGame();
     }
+  }
+  
+  private pauseGame(): void {
+    // Don't allow pause if game over
+    const playerHealth = this.player.getData('health') as HealthComponent;
+    if (this.healthSystem.isDead(playerHealth)) {
+      return;
+    }
+    
+    this.gameManager.pause();
+    this.physics.pause();
+    
+    this.showPauseMenu();
+  }
+  
+  private resumeGame(): void {
+    this.gameManager.resume();
+    this.physics.resume();
+    
+    this.hidePauseMenu();
+  }
+  
+  private showPauseMenu(): void {
+    const centerX = this.cameras.main.worldView.centerX;
+    const centerY = this.cameras.main.worldView.centerY;
+    
+    // Semi-transparent overlay
+    this.pauseOverlay = this.add.rectangle(
+      centerX,
+      centerY,
+      DISPLAY_CONFIG.WIDTH,
+      DISPLAY_CONFIG.HEIGHT,
+      0x000000,
+      0.7
+    );
+    this.pauseOverlay.setScrollFactor(0);
+    this.pauseOverlay.setDepth(1500);
+    
+    // Title
+    this.pauseTitle = this.add.text(
+      centerX,
+      centerY - 100,
+      'PAUSED',
+      {
+        fontSize: '64px',
+        color: '#ffffff',
+        fontFamily: 'Arial',
+        fontStyle: 'bold',
+      }
+    );
+    this.pauseTitle.setOrigin(0.5);
+    this.pauseTitle.setScrollFactor(0);
+    this.pauseTitle.setDepth(1600);
+    
+    // Resume button - using button factory
+    this.pauseResumeButton = createButton(
+      this,
+      centerX,
+      centerY + 20,
+      'RESUME',
+      () => this.resumeGame(),
+      {
+        style: 'success',
+        icon: '▶',
+        focusIndex: 0,
+        depth: 1600,
+      }
+    );
+    
+    // Menu button - using button factory
+    this.pauseMenuButton = createButton(
+      this,
+      centerX,
+      centerY + 100,
+      'MAIN MENU',
+      () => {
+        this.hidePauseMenu();
+        this.scene.start('MenuScene');
+      },
+      {
+        style: 'secondary',
+        icon: '⬅',
+        focusIndex: 1,
+        depth: 1600,
+      }
+    );
+    
+    // Register with focus manager (auto-focus will handle first focus)
+    this.focusManager.clear();
+    this.focusManager.register(this.pauseResumeButton.text);
+    this.focusManager.register(this.pauseMenuButton.text);
+  }
+  
+  private hidePauseMenu(): void {
+    // Destroy all pause menu UI elements
+    if (this.pauseOverlay) {
+      this.pauseOverlay.destroy();
+      this.pauseOverlay = null;
+    }
+    if (this.pauseTitle) {
+      this.pauseTitle.destroy();
+      this.pauseTitle = null;
+    }
+    if (this.pauseResumeButton) {
+      this.pauseResumeButton.destroy();
+      this.pauseResumeButton = null;
+    }
+    if (this.pauseMenuButton) {
+      this.pauseMenuButton.destroy();
+      this.pauseMenuButton = null;
+    }
+    
+    // Clear focus manager (will be re-registered if game over screen shows)
+    this.focusManager.clear();
   }
   
   private createPlaceholderGraphics(): void {

@@ -3,6 +3,8 @@
  * All game values should be pulled from here, not hardcoded
  */
 
+import Phaser from 'phaser';
+
 // ===== PLAYER =====
 export const PLAYER_CONFIG = {
   BASE_HEALTH: 100,
@@ -137,11 +139,36 @@ export const UI_CONFIG = {
   },
 } as const;
 
-// ===== WORLD =====
-export const WORLD_CONFIG = {
-  WIDTH: 800,
-  HEIGHT: 600,
+// ===== DISPLAY =====
+export const DISPLAY_CONFIG = {
+  WIDTH: 1920,
+  HEIGHT: 1080,
+  ASPECT_RATIO: 16 / 9,
   BACKGROUND_COLOR: '#1a1a2e',
+  SCALE_MODE: Phaser.Scale.FIT, // Fit to container maintaining aspect ratio
+  SCALE_CENTER: true, // Center the game canvas
+} as const;
+
+// ===== WORLD ===== (Playable area - can be same as display or different for camera zoom)
+export const WORLD_CONFIG = {
+  WIDTH: 1920,
+  HEIGHT: 1080,
+  BACKGROUND_COLOR: '#1a1a2e',
+} as const;
+
+// ===== INPUT =====
+export const INPUT_CONFIG = {
+  GAMEPAD: {
+    DEADZONE: 0.15, // Analog stick deadzone (0-1)
+    AIM_SENSITIVITY: 1.0, // Aiming sensitivity multiplier
+    MIN_AIM_DISTANCE: 50, // Minimum distance from player to show aim direction
+  },
+  KEYBOARD: {
+    FOCUS_VISUAL_SCALE: 1.1, // Scale multiplier for focused UI elements
+    FOCUS_TINT: 0xffff00, // Yellow tint for focused elements
+    REPEAT_DELAY: 200, // ms before key repeat starts
+    REPEAT_RATE: 50, // ms between repeats
+  },
 } as const;
 
 // ===== GRAPHICS =====

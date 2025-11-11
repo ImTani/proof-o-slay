@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
+import { MenuScene } from './scenes/MenuScene';
 import { GameScene } from './scenes/GameSceneECS';
+import { DISPLAY_CONFIG } from './config/GameConfig';
 
 export interface GameCallbacks {
   onGameOver: (shards: number) => void;
@@ -19,9 +21,13 @@ export const createGameConfig = (gameConfig: GameConfig): Phaser.Types.Core.Game
   return {
     type: Phaser.AUTO,
     parent: 'game-container',
-    width: 800,
-    height: 600,
-    backgroundColor: '#1a1a2e',
+    width: DISPLAY_CONFIG.WIDTH,
+    height: DISPLAY_CONFIG.HEIGHT,
+    backgroundColor: DISPLAY_CONFIG.BACKGROUND_COLOR,
+    scale: {
+      mode: DISPLAY_CONFIG.SCALE_MODE,
+      autoCenter: Phaser.Scale.CENTER_BOTH,
+    },
     physics: {
       default: 'arcade',
       arcade: {
@@ -29,7 +35,10 @@ export const createGameConfig = (gameConfig: GameConfig): Phaser.Types.Core.Game
         debug: false,
       },
     },
-    scene: [GameScene],
+    input: {
+      gamepad: true, // Enable gamepad support
+    },
+    scene: [MenuScene, GameScene], // MenuScene is first (starts automatically)
     // Store our custom config in the game registry
     callbacks: {
       preBoot: (game: Phaser.Game) => {

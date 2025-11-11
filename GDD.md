@@ -1470,8 +1470,3 @@ if (dryRunResult.effects.status.status !== 'success') {
 - [Sui Move by Example](https://examples.sui.io/)
 - [Phaser 3 Documentation](https://photonstorm.github.io/phaser3-docs/)
 - [React + TypeScript Guide](https://react-typescript-cheatsheet.netlify.app/)
-
-### Community Support
-- OneChain Discord: [Link if available]
-- Sui Move Forum: [Link if available]
-- Hackathon Slack channel
