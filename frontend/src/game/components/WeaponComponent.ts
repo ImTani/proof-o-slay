@@ -9,9 +9,9 @@ export interface WeaponComponent {
 }
 
 export const createWeaponComponent = (
-  fireRate: number = 500,
-  damage: number = 10,
-  bulletSpeed: number = 400
+  fireRate: number,
+  damage: number,
+  bulletSpeed: number
 ): WeaponComponent => ({
   fireRate,
   lastShotTime: 0,

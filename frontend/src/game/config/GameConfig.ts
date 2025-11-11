@@ -18,35 +18,19 @@ export interface WeaponConfig {
   damage: number;
   bulletSpeed: number;
   bulletLifespan: number; // ms
-  bulletOffset: number; // distance from player center
+  weaponOffset: number; // distance from player center to weapon sprite
 }
 
 export const WEAPONS: Record<string, WeaponConfig> = {
-  BASIC_GUN: {
-    name: 'Basic Gun',
+  PISTOL: {
+    name: 'Pistol',
     fireRate: 500,
     damage: 10,
     bulletSpeed: 400,
     bulletLifespan: 2000,
-    bulletOffset: 20, // Spawn bullets 20px in front of player
+    weaponOffset: 25, // Weapon orbits 25px from player center
   },
   // Future weapons can be added here
-  SHOTGUN: {
-    name: 'Shotgun',
-    fireRate: 800,
-    damage: 8,
-    bulletSpeed: 350,
-    bulletLifespan: 1500,
-    bulletOffset: 20,
-  },
-  RAPID_FIRE: {
-    name: 'Rapid Fire',
-    fireRate: 200,
-    damage: 5,
-    bulletSpeed: 450,
-    bulletLifespan: 2000,
-    bulletOffset: 20,
-  },
 } as const;
 
 // ===== CLASSES =====
@@ -61,26 +45,12 @@ export interface CharacterClass {
 export const CHARACTER_CLASSES: Record<string, CharacterClass> = {
   WARRIOR: {
     name: 'Warrior',
-    startingWeapon: 'BASIC_GUN',
+    startingWeapon: 'PISTOL',
     healthModifier: 1.0,
     speedModifier: 1.0,
     description: 'Balanced fighter with steady aim',
   },
   // Future classes can be added here
-  TANK: {
-    name: 'Tank',
-    startingWeapon: 'SHOTGUN',
-    healthModifier: 1.5,
-    speedModifier: 0.8,
-    description: 'High HP, slow movement, powerful close-range weapon',
-  },
-  SCOUT: {
-    name: 'Scout',
-    startingWeapon: 'RAPID_FIRE',
-    healthModifier: 0.8,
-    speedModifier: 1.3,
-    description: 'Low HP, fast movement, rapid fire',
-  },
 } as const;
 
 // ===== ENEMIES =====
@@ -92,21 +62,7 @@ export const ENEMY_CONFIG = {
     damage: 10,
     color: 0xf44336, // Red
   },
-  // Future enemy types
-  TANK: {
-    name: 'Tank Slime',
-    health: 100,
-    speed: 20,
-    damage: 20,
-    color: 0x9c27b0, // Purple
-  },
-  FAST: {
-    name: 'Fast Slime',
-    health: 15,
-    speed: 80,
-    damage: 5,
-    color: 0xff9800, // Orange
-  },
+  // Future enemy types can be added here
 } as const;
 
 // ===== WAVE SYSTEM =====
@@ -161,6 +117,24 @@ export const UI_CONFIG = {
     shardColor: '#4caf50',
     waveColor: '#ffeb3b',
   },
+  GAME_OVER: {
+    title: {
+      fontSize: '64px',
+      color: '#ff0000',
+      fontFamily: 'Arial',
+      stroke: '#000000',
+      strokeThickness: 6,
+      offsetY: -50, // Offset from center
+    },
+    shardsDisplay: {
+      fontSize: '32px',
+      color: '#4caf50',
+      fontFamily: 'Arial',
+      stroke: '#000000',
+      strokeThickness: 4,
+      offsetY: 30, // Offset from center
+    },
+  },
 } as const;
 
 // ===== WORLD =====
@@ -189,7 +163,14 @@ export const GRAPHICS_CONFIG = {
     size: 16,
     color: 0x4caf50, // Green
     scale: 1.5,
+    floatOffset: 10,        // Vertical offset for float animation (pixels)
+    floatDuration: 500,     // Float animation duration (ms)
+    pulseScale: 1.7,        // Max scale during pulse animation
+    pulseDuration: 800,     // Pulse animation duration (ms)
+    rotateDuration: 3000,   // Rotation animation duration (ms)
   },
+  DAMAGE_FLASH_DURATION: 100,    // Duration of red tint when taking damage (ms)
+  IFRAME_FLASH_INTERVAL: 100,    // Interval between flashes during invincibility (ms)
 } as const;
 
 // ===== HELPER FUNCTIONS =====

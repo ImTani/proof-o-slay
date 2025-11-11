@@ -6,8 +6,7 @@ import {
   WORLD_CONFIG, 
   WAVE_CONFIG, 
   PLAYER_CONFIG,
-  UI_CONFIG,
-  type WeaponConfig 
+  UI_CONFIG
 } from '../config/GameConfig';
 
 // Systems
@@ -16,6 +15,7 @@ import { MovementSystem } from '../systems/MovementSystem';
 import { AISystem } from '../systems/AISystem';
 import { HealthSystem } from '../systems/HealthSystem';
 import { ProjectileSystem } from '../systems/ProjectileSystem';
+import { WeaponSystem } from '../systems/WeaponSystem';
 
 // Entities
 import { createPlayerEntity, type PlayerUpgrades } from '../entities/PlayerEntity';
@@ -31,6 +31,7 @@ import type { InputComponent } from '../components/InputComponent';
 import type { AIComponent } from '../components/AIComponent';
 import type { ProjectileComponent } from '../components/ProjectileComponent';
 import type { CollectibleComponent } from '../components/CollectibleComponent';
+import type { WeaponSpriteComponent } from '../components/WeaponSpriteComponent';
 
 export class GameScene extends Phaser.Scene {
   // Systems
@@ -39,6 +40,7 @@ export class GameScene extends Phaser.Scene {
   private aiSystem!: AISystem;
   private healthSystem!: HealthSystem;
   private projectileSystem!: ProjectileSystem;
+  private weaponSystem!: WeaponSystem;
   
   // Entity groups
   private player!: Phaser.Physics.Arcade.Sprite;
@@ -74,6 +76,7 @@ export class GameScene extends Phaser.Scene {
     this.aiSystem = new AISystem();
     this.healthSystem = new HealthSystem();
     this.projectileSystem = new ProjectileSystem();
+    this.weaponSystem = new WeaponSystem();
   }
   
   preload() {
@@ -86,12 +89,18 @@ export class GameScene extends Phaser.Scene {
       hasArmor: this.gameConfig.upgrades.hasArmor,
       hasBoots: this.gameConfig.upgrades.hasBoots,
     };
-    this.player = createPlayerEntity(this, 400, 300, upgrades);
+    this.player = createPlayerEntity(
+      this,
+      WORLD_CONFIG.WIDTH / 2,
+      WORLD_CONFIG.HEIGHT / 2,
+      upgrades
+    );
     
     // Create entity groups
     this.bullets = this.physics.add.group({
       defaultKey: 'bullet',
-      maxSize: 50,
+      maxSize: -1, // Unlimited pool size
+      runChildUpdate: false,
     });
     
     this.enemies = this.physics.add.group();
@@ -120,13 +129,20 @@ export class GameScene extends Phaser.Scene {
     const playerMovement = this.player.getData('movement') as MovementComponent;
     const pointer = this.input.activePointer;
     
-    this.inputSystem.update(this.player, playerInput, playerMovement, pointer);
+    this.inputSystem.update(this.player, playerInput, playerMovement);
     this.movementSystem.update(this.player, playerMovement);
+    
+    // Update weapon position and rotation (follows cursor)
+    const weaponSpriteComp = this.player.getData('weaponSprite') as WeaponSpriteComponent;
+    this.weaponSystem.update(this.player, weaponSpriteComp, pointer.worldX, pointer.worldY);
     
     // Handle shooting
     const playerWeapon = this.player.getData('weapon') as WeaponComponent;
-    if (pointer.isDown && time > playerWeapon.lastShotTime + playerWeapon.fireRate) {
-      this.shootBullet(this.player, playerWeapon, time);
+    if (pointer.isDown) {
+      const timeSinceLastShot = time - playerWeapon.lastShotTime;
+      if (timeSinceLastShot > playerWeapon.fireRate) {
+        this.shootBullet(this.player, playerWeapon, time);
+      }
     }
     
     // Update enemies
@@ -178,15 +194,20 @@ export class GameScene extends Phaser.Scene {
         const enemySprite = enemy as Phaser.Physics.Arcade.Sprite;
         const playerHealth = this.player.getData('health') as HealthComponent;
         
+        // Check if player is invincible (use Date.now for consistency)
+        const currentTime = Date.now();
+        if (playerHealth.isInvincible && currentTime < playerHealth.invincibilityEndTime) {
+          return; // Skip damage if still invincible
+        }
+        
         const damage = enemySprite.getData('damage') as number;
-        const time = Date.now();
         
         const tookDamage = this.healthSystem.takeDamage(
           this.player,
           playerHealth,
           damage,
           this,
-          time
+          currentTime
         );
         
         if (tookDamage) {
@@ -196,7 +217,7 @@ export class GameScene extends Phaser.Scene {
             playerHealth,
             PLAYER_CONFIG.INVINCIBILITY_DURATION,
             this,
-            time
+            currentTime
           );
           
           // Knockback
@@ -249,21 +270,42 @@ export class GameScene extends Phaser.Scene {
     weapon: WeaponComponent,
     time: number
   ): void {
-    const angle = player.rotation;
-    const weaponConfig = player.getData('weaponConfig') as WeaponConfig;
+    // Get pistol sprite position and rotation
+    const weaponSpriteComp = player.getData('weaponSprite') as WeaponSpriteComponent;
+    const pistol = weaponSpriteComp.sprite;
     
+    // Calculate bullet spawn position at the tip of the pistol
+    const spawnOffset = 8; // Spawn bullets 8px from pistol center (at the tip)
+    const spawnX = pistol.x + Math.cos(pistol.rotation) * spawnOffset;
+    const spawnY = pistol.y + Math.sin(pistol.rotation) * spawnOffset;
+    
+    // Create bullet using entity factory (handles pooling)
     const bullet = createBulletEntity(
-      this,
-      player.x,
-      player.y,
-      angle,
+      this.bullets,
+      spawnX,
+      spawnY,
+      pistol.rotation,
       weapon.damage,
       weapon.bulletSpeed,
-      weaponConfig.bulletOffset
+      time
     );
     
-    this.bullets.add(bullet);
+    if (!bullet) {
+      return;
+    }
+    
     weapon.lastShotTime = time;
+    
+    // Pistol recoil animation
+    const originalScale = pistol.scale;
+    this.tweens.add({
+      targets: pistol,
+      scaleX: originalScale * 0.8,
+      scaleY: originalScale * 0.8,
+      duration: 50,
+      yoyo: true,
+      ease: 'Quad.easeOut',
+    });
   }
   
   private updateEnemies(): void {
@@ -279,12 +321,13 @@ export class GameScene extends Phaser.Scene {
   }
   
   private updateProjectiles(): void {
+    const currentTime = this.time.now;
     this.bullets.children.entries.forEach((bullet) => {
       const sprite = bullet as Phaser.Physics.Arcade.Sprite;
       if (!sprite.active) return;
       
       const projectile = sprite.getData('projectile') as ProjectileComponent;
-      this.projectileSystem.update(sprite, projectile);
+      this.projectileSystem.update(sprite, projectile, currentTime);
     });
   }
   
@@ -403,24 +446,44 @@ export class GameScene extends Phaser.Scene {
   private gameOver(): void {
     console.log(`💀 Game Over! Collected ${this.shardCount} shards`);
     
+    // Destroy weapon sprite
+    const weaponSpriteComp = this.player.getData('weaponSprite') as WeaponSpriteComponent;
+    if (weaponSpriteComp && weaponSpriteComp.sprite) {
+      weaponSpriteComp.sprite.destroy();
+    }
+    
     this.physics.pause();
     
-    const gameOverText = this.add.text(400, 250, 'GAME OVER', {
-      fontSize: '64px',
-      color: '#ff0000',
-      fontFamily: 'Arial',
-      stroke: '#000000',
-      strokeThickness: 6,
-    });
+    const centerX = WORLD_CONFIG.WIDTH / 2;
+    const centerY = WORLD_CONFIG.HEIGHT / 2;
+    const gameOverConfig = UI_CONFIG.GAME_OVER;
+    
+    const gameOverText = this.add.text(
+      centerX,
+      centerY + gameOverConfig.title.offsetY,
+      'GAME OVER',
+      {
+        fontSize: gameOverConfig.title.fontSize,
+        color: gameOverConfig.title.color,
+        fontFamily: gameOverConfig.title.fontFamily,
+        stroke: gameOverConfig.title.stroke,
+        strokeThickness: gameOverConfig.title.strokeThickness,
+      }
+    );
     gameOverText.setOrigin(0.5);
     
-    const shardsText = this.add.text(400, 330, `Collected ${this.shardCount} Shards`, {
-      fontSize: '32px',
-      color: '#4caf50',
-      fontFamily: 'Arial',
-      stroke: '#000000',
-      strokeThickness: 4,
-    });
+    const shardsText = this.add.text(
+      centerX,
+      centerY + gameOverConfig.shardsDisplay.offsetY,
+      `Collected ${this.shardCount} Shards`,
+      {
+        fontSize: gameOverConfig.shardsDisplay.fontSize,
+        color: gameOverConfig.shardsDisplay.color,
+        fontFamily: gameOverConfig.shardsDisplay.fontFamily,
+        stroke: gameOverConfig.shardsDisplay.stroke,
+        strokeThickness: gameOverConfig.shardsDisplay.strokeThickness,
+      }
+    );
     shardsText.setOrigin(0.5);
     
     // Call React callback
@@ -438,6 +501,13 @@ export class GameScene extends Phaser.Scene {
     playerGraphics.fillRect(0, 0, 32, 32);
     playerGraphics.generateTexture('player', 32, 32);
     playerGraphics.destroy();
+    
+    // Pistol (small rectangle representing the gun)
+    const pistolGraphics = this.make.graphics({ x: 0, y: 0 });
+    pistolGraphics.fillStyle(0x666666, 1); // Dark gray
+    pistolGraphics.fillRect(0, 0, 16, 8); // Rectangular pistol shape
+    pistolGraphics.generateTexture('pistol', 16, 8);
+    pistolGraphics.destroy();
     
     // Bullet
     const bulletGraphics = this.make.graphics({ x: 0, y: 0 });

@@ -5,8 +5,11 @@ import type { ProjectileComponent } from '../components/ProjectileComponent';
  * ProjectileSystem - Manages projectile lifetime
  */
 export class ProjectileSystem {
-  update(sprite: Phaser.Physics.Arcade.Sprite, projectile: ProjectileComponent): void {
-    const currentTime = Date.now();
+  update(
+    sprite: Phaser.Physics.Arcade.Sprite,
+    projectile: ProjectileComponent,
+    currentTime: number
+  ): void {
     const age = currentTime - projectile.spawnTime;
     
     if (age >= projectile.lifespan) {
@@ -15,10 +18,9 @@ export class ProjectileSystem {
   }
   
   destroyProjectile(sprite: Phaser.Physics.Arcade.Sprite): void {
+    // Use killAndHide to properly return sprite to pool for reuse
+    sprite.body?.reset(0, 0);
     sprite.setActive(false);
     sprite.setVisible(false);
-    if (sprite.body) {
-      (sprite.body as Phaser.Physics.Arcade.Body).enable = false;
-    }
   }
 }

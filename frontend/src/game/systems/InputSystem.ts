@@ -9,8 +9,7 @@ export class InputSystem {
   update(
     sprite: Phaser.Physics.Arcade.Sprite,
     input: InputComponent,
-    movement: MovementComponent,
-    pointer: Phaser.Input.Pointer
+    movement: MovementComponent
   ): void {
     // Reset velocity
     movement.velocity.set(0, 0);
@@ -31,15 +30,12 @@ export class InputSystem {
     // Normalize diagonal movement
     if (movement.velocity.length() > 0) {
       movement.velocity.normalize();
+      
+      // Rotate player sprite to face movement direction
+      const angle = Math.atan2(movement.velocity.y, movement.velocity.x);
+      sprite.setRotation(angle);
     }
-    
-    // Mouse aiming
-    const angle = Phaser.Math.Angle.Between(
-      sprite.x,
-      sprite.y,
-      pointer.worldX,
-      pointer.worldY
-    );
-    sprite.setRotation(angle);
+    // If not moving, keep current rotation
   }
 }
+

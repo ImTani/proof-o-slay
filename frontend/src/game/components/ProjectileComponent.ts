@@ -9,9 +9,10 @@ export interface ProjectileComponent {
 
 export const createProjectileComponent = (
   damage: number = 10,
-  lifespan: number = 2000
+  lifespan: number = 2000,
+  spawnTime: number = 0 // Should be passed from scene (Phaser time, not Date.now)
 ): ProjectileComponent => ({
   damage,
-  spawnTime: Date.now(),
+  spawnTime,
   lifespan,
 });
