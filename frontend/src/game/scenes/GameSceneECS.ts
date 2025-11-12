@@ -5,6 +5,7 @@ import type { GameConfig } from '../config';
 import { 
   DISPLAY_CONFIG,
   WORLD_CONFIG, 
+  CAMERA_CONFIG,
   WAVE_CONFIG, 
   PLAYER_CONFIG,
   UI_CONFIG
@@ -46,6 +47,9 @@ export class GameScene extends Phaser.Scene {
   private projectileSystem!: ProjectileSystem;
   private weaponSystem!: WeaponSystem;
   private focusManager!: FocusManager;
+  
+  // Cameras
+  private uiCamera!: Phaser.Cameras.Scene2D.Camera;
   
   // Entity groups
   private player!: Phaser.Physics.Arcade.Sprite;
@@ -99,17 +103,48 @@ export class GameScene extends Phaser.Scene {
   }
   
   create() {
-    // Create player entity
+    // Set up infinite world bounds
+    this.physics.world.setBounds(0, 0, WORLD_CONFIG.WIDTH, WORLD_CONFIG.HEIGHT);
+    
+    // Create seamless tiling background
+    this.createTilingBackground();
+    
+    // Set up cameras
+    // Main camera follows player (will zoom/move with game world)
+    this.cameras.main.setBounds(0, 0, WORLD_CONFIG.WIDTH, WORLD_CONFIG.HEIGHT);
+    this.cameras.main.setZoom(CAMERA_CONFIG.ZOOM);
+    this.cameras.main.roundPixels = CAMERA_CONFIG.ROUND_PIXELS;
+    
+    // UI camera stays fixed (no zoom, no movement)
+    this.uiCamera = this.cameras.add(0, 0, DISPLAY_CONFIG.WIDTH, DISPLAY_CONFIG.HEIGHT);
+    this.uiCamera.setScroll(0, 0);
+    this.uiCamera.setZoom(1); // Always 1:1 zoom
+    this.uiCamera.roundPixels = true;
+    
+    // Create player entity at world center
     const upgrades: PlayerUpgrades = {
       hasArmor: this.gameConfig.upgrades.hasArmor,
       hasBoots: this.gameConfig.upgrades.hasBoots,
     };
     this.player = createPlayerEntity(
       this,
-      DISPLAY_CONFIG.WIDTH / 2,
-      DISPLAY_CONFIG.HEIGHT / 2,
+      WORLD_CONFIG.WIDTH / 2,
+      WORLD_CONFIG.HEIGHT / 2,
       upgrades
     );
+    
+    // Set player collision with world bounds
+    this.player.setCollideWorldBounds(true);
+    
+    // Make main camera follow player with smooth lerp
+    this.cameras.main.startFollow(this.player, CAMERA_CONFIG.ROUND_PIXELS, CAMERA_CONFIG.LERP_X, CAMERA_CONFIG.LERP_Y);
+    
+    // Set up deadzone to reduce jitter during diagonal movement
+    if (CAMERA_CONFIG.DEADZONE_WIDTH > 0 || CAMERA_CONFIG.DEADZONE_HEIGHT > 0) {
+      const deadzoneWidth = DISPLAY_CONFIG.WIDTH * CAMERA_CONFIG.DEADZONE_WIDTH;
+      const deadzoneHeight = DISPLAY_CONFIG.HEIGHT * CAMERA_CONFIG.DEADZONE_HEIGHT;
+      this.cameras.main.setDeadzone(deadzoneWidth, deadzoneHeight);
+    }
     
     // Create entity groups
     this.bullets = this.physics.add.group({
@@ -143,7 +178,10 @@ export class GameScene extends Phaser.Scene {
     this.startNextWave();
   }
   
-  update(time: number) {
+  update(time: number, delta: number) {
+    // Note: delta (ms since last frame) available for future use if needed
+    // Currently using Phaser physics (frame-rate independent) and timestamp-based cooldowns
+    
     // Handle pause menu focus navigation
     if (this.gameManager.isPaused()) {
       this.focusManager.update(time);
@@ -425,11 +463,16 @@ export class GameScene extends Phaser.Scene {
   }
   
   private createUI(): void {
-    // Health bar above player
+    // Health bar above player (follows player in game world - uses main camera)
     const hpBar = UI_CONFIG.HEALTH_BAR;
     this.healthBarBg = this.add.rectangle(0, 0, hpBar.width, hpBar.height, hpBar.backgroundColor);
     this.healthBarFill = this.add.rectangle(0, 0, hpBar.width, hpBar.height, hpBar.healthyColor);
     this.healthBarFill.setOrigin(0, 0.5);
+    
+    // Make health bars ignore UI camera (only visible on main camera)
+    this.healthBarBg.setScrollFactor(1);
+    this.healthBarFill.setScrollFactor(1);
+    this.uiCamera.ignore([this.healthBarBg, this.healthBarFill]);
     
     // UI text - using fixed padding from edges for scalability
     const padding = 20;
@@ -456,12 +499,10 @@ export class GameScene extends Phaser.Scene {
       fontFamily: textStyle.fontFamily,
     });
     
-    // Fix to camera so they don't scroll
-    this.healthText.setScrollFactor(0);
-    this.shardText.setScrollFactor(0);
-    this.waveText.setScrollFactor(0);
+    // Make text UI elements ignore main camera (only visible on UI camera)
+    this.cameras.main.ignore([this.healthText, this.shardText, this.waveText]);
     
-    // Set depth to ensure UI is on top
+    // Set depth to ensure UI text is on top
     this.healthText.setDepth(1000);
     this.shardText.setDepth(1000);
     this.waveText.setDepth(1000);
@@ -521,7 +562,6 @@ export class GameScene extends Phaser.Scene {
       }
     );
     gameOverText.setOrigin(0.5);
-    gameOverText.setScrollFactor(0);
     gameOverText.setDepth(2000);
     
     const shardsText = this.add.text(
@@ -537,8 +577,10 @@ export class GameScene extends Phaser.Scene {
       }
     );
     shardsText.setOrigin(0.5);
-    shardsText.setScrollFactor(0);
     shardsText.setDepth(2000);
+    
+    // Make game over UI elements ignore main camera (only visible on UI camera)
+    this.cameras.main.ignore([gameOverText, shardsText]);
     
     // Play Again button - using button factory
     const playAgainButton = createButton(
@@ -589,8 +631,16 @@ export class GameScene extends Phaser.Scene {
       }
     );
     hintText.setOrigin(0.5);
-    hintText.setScrollFactor(0);
     hintText.setDepth(2000);
+    
+    // Make buttons and hint ignore main camera (only visible on UI camera)
+    this.cameras.main.ignore([
+      playAgainButton.highlight, 
+      playAgainButton.text, 
+      menuButton.highlight, 
+      menuButton.text, 
+      hintText
+    ]);
   }
   
   private togglePause(): void {
@@ -622,8 +672,8 @@ export class GameScene extends Phaser.Scene {
   }
   
   private showPauseMenu(): void {
-    const centerX = this.cameras.main.worldView.centerX;
-    const centerY = this.cameras.main.worldView.centerY;
+    const centerX = DISPLAY_CONFIG.WIDTH / 2;
+    const centerY = DISPLAY_CONFIG.HEIGHT / 2;
     
     // Semi-transparent overlay
     this.pauseOverlay = this.add.rectangle(
@@ -634,7 +684,6 @@ export class GameScene extends Phaser.Scene {
       0x000000,
       0.7
     );
-    this.pauseOverlay.setScrollFactor(0);
     this.pauseOverlay.setDepth(1500);
     
     // Title
@@ -650,7 +699,6 @@ export class GameScene extends Phaser.Scene {
       }
     );
     this.pauseTitle.setOrigin(0.5);
-    this.pauseTitle.setScrollFactor(0);
     this.pauseTitle.setDepth(1600);
     
     // Resume button - using button factory
@@ -686,6 +734,16 @@ export class GameScene extends Phaser.Scene {
       }
     );
     
+    // Make pause menu ignore main camera (only visible on UI camera)
+    this.cameras.main.ignore([
+      this.pauseOverlay, 
+      this.pauseTitle,
+      this.pauseResumeButton.highlight,
+      this.pauseResumeButton.text,
+      this.pauseMenuButton.highlight,
+      this.pauseMenuButton.text
+    ]);
+    
     // Register with focus manager (auto-focus will handle first focus)
     this.focusManager.clear();
     this.focusManager.register(this.pauseResumeButton.text);
@@ -713,6 +771,35 @@ export class GameScene extends Phaser.Scene {
     
     // Clear focus manager (will be re-registered if game over screen shows)
     this.focusManager.clear();
+  }
+  
+  private createTilingBackground(): void {
+    // Create a simple grid pattern texture for the background
+    const tileSize = WORLD_CONFIG.TILE_SIZE;
+    const graphics = this.add.graphics();
+    
+    // Fill with base color
+    graphics.fillStyle(parseInt(WORLD_CONFIG.BACKGROUND_COLOR.replace('#', '0x')), 1);
+    graphics.fillRect(0, 0, tileSize, tileSize);
+    
+    // Add grid lines for visual reference
+    graphics.lineStyle(1, 0x2a2a3e, 0.3);
+    graphics.strokeRect(0, 0, tileSize, tileSize);
+    
+    // Generate texture from graphics
+    graphics.generateTexture('backgroundTile', tileSize, tileSize);
+    graphics.destroy();
+    
+    // Create tiling sprite that covers the entire world
+    const tilingBg = this.add.tileSprite(
+      0,
+      0,
+      WORLD_CONFIG.WIDTH,
+      WORLD_CONFIG.HEIGHT,
+      'backgroundTile'
+    );
+    tilingBg.setOrigin(0, 0);
+    tilingBg.setDepth(-1); // Behind everything else
   }
   
   private createPlaceholderGraphics(): void {

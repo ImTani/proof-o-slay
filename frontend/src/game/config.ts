@@ -33,7 +33,12 @@ export const createGameConfig = (gameConfig: GameConfig): Phaser.Types.Core.Game
       arcade: {
         gravity: { x: 0, y: 0 },
         debug: false,
+        fps: 60, // Fixed physics timestep (frame-rate independent)
       },
+    },
+    fps: {
+      target: 60, // Target FPS (physics will interpolate if rendering is slower)
+      forceSetTimeOut: false, // Use requestAnimationFrame for smooth rendering
     },
     input: {
       gamepad: true, // Enable gamepad support

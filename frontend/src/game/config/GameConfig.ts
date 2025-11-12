@@ -149,11 +149,22 @@ export const DISPLAY_CONFIG = {
   SCALE_CENTER: true, // Center the game canvas
 } as const;
 
-// ===== WORLD ===== (Playable area - can be same as display or different for camera zoom)
+// ===== WORLD ===== (Infinite scrolling world)
 export const WORLD_CONFIG = {
-  WIDTH: 1920,
-  HEIGHT: 1080,
+  WIDTH: 10000, // Infinite world bounds
+  HEIGHT: 10000,
   BACKGROUND_COLOR: '#1a1a2e',
+  TILE_SIZE: 64, // Size of background tiles for seamless tiling
+} as const;
+
+// ===== CAMERA =====
+export const CAMERA_CONFIG = {
+  LERP_X: 0.2, // Smooth follow lerp factor (0-1) - higher = tighter follow
+  LERP_Y: 0.2,
+  ZOOM: 1.0, // Default zoom level
+  DEADZONE_WIDTH: 0.1, // Small deadzone to reduce jitter (fraction of screen)
+  DEADZONE_HEIGHT: 0.1,
+  ROUND_PIXELS: true, // Prevent sub-pixel jitter
 } as const;
 
 // ===== INPUT =====
