@@ -14,25 +14,115 @@ export const PLAYER_CONFIG = {
 } as const;
 
 // ===== WEAPONS =====
+export type WeaponType = 'melee_arc' | 'homing' | 'dual_shot' | 'piercing' | 'cone_dot' | 'explosive';
+export type SpecialEffect = 'pierce_3' | 'homing' | 'spread' | 'pierce_all' | 'cone_aoe' | 'explosive_aoe';
+
 export interface WeaponConfig {
   name: string;
+  type: WeaponType;
   fireRate: number; // ms between shots
   damage: number;
   bulletSpeed: number;
   bulletLifespan: number; // ms
   weaponOffset: number; // distance from player center to weapon sprite
+  range: number; // effective range in pixels
+  specialEffect?: SpecialEffect;
+  // Special effect parameters
+  pierceCount?: number; // for pierce weapons
+  homingStrength?: number; // for homing weapons (0-1)
+  spreadAngle?: number; // for dual-shot (in radians)
+  coneAngle?: number; // for cone weapons (in radians)
+  explosionRadius?: number; // for explosive weapons
 }
 
 export const WEAPONS: Record<string, WeaponConfig> = {
+  // Class Starter Weapons
+  IRON_SWORD: {
+    name: 'Iron Sword',
+    type: 'melee_arc',
+    fireRate: 500, // 0.5s cooldown
+    damage: 15,
+    bulletSpeed: 0, // Melee weapon (no projectile travel)
+    bulletLifespan: 200, // Arc visual lasts 200ms
+    weaponOffset: 25,
+    range: 50, // 50px melee range
+    specialEffect: 'pierce_3',
+    pierceCount: 3,
+  },
+  ARCANE_STAFF: {
+    name: 'Arcane Staff',
+    type: 'homing',
+    fireRate: 600, // 0.6s cooldown
+    damage: 12,
+    bulletSpeed: 250, // Slower than normal (homing compensates)
+    bulletLifespan: 3000, // 3 seconds to find target
+    weaponOffset: 25,
+    range: 300, // Auto-targets in 300px radius
+    specialEffect: 'homing',
+    homingStrength: 0.5, // Moderate homing (0-1 scale)
+  },
+  TWIN_DAGGERS: {
+    name: 'Twin Daggers',
+    type: 'dual_shot',
+    fireRate: 300, // 0.3s cooldown (rapid fire)
+    damage: 8, // Lower damage per hit, but fires 2
+    bulletSpeed: 450, // Fast projectiles
+    bulletLifespan: 1500,
+    weaponOffset: 25,
+    range: 200,
+    specialEffect: 'spread',
+    spreadAngle: Math.PI / 12, // 15 degree spread
+  },
+  
+  // Unlockable Weapons
+  HEAVY_CROSSBOW: {
+    name: 'Heavy Crossbow',
+    type: 'piercing',
+    fireRate: 1200, // 1.2s cooldown (slow but powerful)
+    damage: 30,
+    bulletSpeed: 500,
+    bulletLifespan: 2500,
+    weaponOffset: 30,
+    range: 400,
+    specialEffect: 'pierce_all',
+    pierceCount: 999, // Infinite pierce
+  },
+  FLAMETHROWER: {
+    name: 'Flamethrower',
+    type: 'cone_dot',
+    fireRate: 100, // 0.1s cooldown (continuous stream)
+    damage: 5, // Per tick (DPS = 50)
+    bulletSpeed: 200, // Flames move slowly
+    bulletLifespan: 800, // Short-lived particles
+    weaponOffset: 30,
+    range: 150, // Cone extends 150px
+    specialEffect: 'cone_aoe',
+    coneAngle: Math.PI / 4, // 45 degree cone
+  },
+  CELESTIAL_CANNON: {
+    name: 'Celestial Cannon',
+    type: 'explosive',
+    fireRate: 2000, // 2.0s cooldown (slow but devastating)
+    damage: 100, // Direct hit damage
+    bulletSpeed: 600,
+    bulletLifespan: 3000,
+    weaponOffset: 35,
+    range: 600,
+    specialEffect: 'explosive_aoe',
+    explosionRadius: 200, // 200px explosion radius
+  },
+  
+  // Legacy weapon for testing (can be removed later)
   PISTOL: {
     name: 'Pistol',
+    type: 'dual_shot',
     fireRate: 500,
     damage: 10,
     bulletSpeed: 400,
     bulletLifespan: 2000,
-    weaponOffset: 25, // Weapon orbits 25px from player center
+    weaponOffset: 25,
+    range: 300,
   },
-  // Future weapons can be added here
 } as const;
 
 // ===== CLASSES =====
@@ -51,7 +141,7 @@ export interface CharacterClass {
 export const CHARACTER_CLASSES: Record<string, CharacterClass> = {
   WARRIOR: {
     name: 'Warrior',
-    startingWeapon: 'PISTOL', // Will be IRON_SWORD once implemented
+    startingWeapon: 'IRON_SWORD',
     baseHealth: 120,
     baseSpeed: 100,
     damageMultiplier: 1.0,
@@ -62,7 +152,7 @@ export const CHARACTER_CLASSES: Record<string, CharacterClass> = {
   },
   MAGE: {
     name: 'Mage',
-    startingWeapon: 'PISTOL', // Will be ARCANE_STAFF once implemented
+    startingWeapon: 'ARCANE_STAFF',
     baseHealth: 80,
     baseSpeed: 90,
     damageMultiplier: 1.3,
@@ -73,7 +163,7 @@ export const CHARACTER_CLASSES: Record<string, CharacterClass> = {
   },
   ROGUE: {
     name: 'Rogue',
-    startingWeapon: 'PISTOL', // Will be TWIN_DAGGERS once implemented
+    startingWeapon: 'TWIN_DAGGERS',
     baseHealth: 100,
     baseSpeed: 120,
     damageMultiplier: 1.1,

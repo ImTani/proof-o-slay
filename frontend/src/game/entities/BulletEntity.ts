@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { createProjectileComponent } from '../components/ProjectileComponent';
+import type { SpecialEffect } from '../config/GameConfig';
 
 /**
  * Bullet Entity Factory - Creates projectiles from a pool
@@ -12,7 +13,12 @@ export const createBulletEntity = (
   angle: number,
   damage: number,
   speed: number,
-  spawnTime: number // Phaser time, not Date.now()
+  lifespan: number,
+  spawnTime: number, // Phaser time, not Date.now()
+  specialEffect?: SpecialEffect,
+  pierceCount?: number,
+  homingStrength?: number,
+  explosionRadius?: number
 ): Phaser.Physics.Arcade.Sprite | null => {
   // Get bullet from pool (reuses inactive bullets)
   let bullet = bulletGroup.get(x, y, 'bullet') as Phaser.Physics.Arcade.Sprite;
@@ -39,8 +45,20 @@ export const createBulletEntity = (
   }
   
   // Attach components
-  bullet.setData('projectile', createProjectileComponent(damage, 2000, spawnTime));
+  bullet.setData(
+    'projectile',
+    createProjectileComponent(
+      damage,
+      lifespan,
+      spawnTime,
+      specialEffect,
+      pierceCount,
+      homingStrength,
+      explosionRadius
+    )
+  );
   bullet.setData('entityType', 'bullet');
+  bullet.setData('angle', angle); // Store for homing calculations
   
   return bullet;
 };

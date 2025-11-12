@@ -36,9 +36,20 @@ export const createPlayerEntity = (
   sprite.setData('health', createHealthComponent(stats.maxHealth));
   sprite.setData('movement', createMovementComponent(stats.speed));
   sprite.setData('weapon', createWeaponComponent(
+    CHARACTER_CLASSES[className].startingWeapon, // weaponKey
+    stats.weapon.type,
     stats.weapon.fireRate,
     stats.weapon.damage * stats.damageMultiplier, // Apply class damage multiplier
-    stats.weapon.bulletSpeed
+    stats.weapon.bulletSpeed,
+    stats.weapon.bulletLifespan,
+    stats.weapon.range,
+    stats.weapon.weaponOffset,
+    stats.weapon.specialEffect,
+    stats.weapon.pierceCount,
+    stats.weapon.homingStrength,
+    stats.weapon.spreadAngle,
+    stats.weapon.coneAngle,
+    stats.weapon.explosionRadius
   ));
   sprite.setData('input', createInputComponent(scene));
   sprite.setData('weaponSprite', createWeaponSpriteComponent(weaponSprite, stats.weapon.weaponOffset));

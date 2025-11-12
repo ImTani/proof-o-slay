@@ -24,7 +24,6 @@ import { GameManager } from '../systems/GameManager';
 // Entities
 import { createPlayerEntity, type PlayerUpgrades } from '../entities/PlayerEntity';
 import { createEnemyEntity } from '../entities/EnemyEntity';
-import { createBulletEntity } from '../entities/BulletEntity';
 import { createShardEntity } from '../entities/ShardEntity';
 import { createButton, type ButtonEntity } from '../entities/ButtonEntity';
 
@@ -231,22 +230,35 @@ export class GameScene extends Phaser.Scene {
     
     // Update weapon position and rotation
     const weaponSpriteComp = this.player.getData('weaponSprite') as WeaponSpriteComponent;
+    const playerWeapon = this.player.getData('weapon') as WeaponComponent;
+    const damageMultiplier = this.player.getData('damageMultiplier') as number || 1.0;
     
     // Get aim direction from gamepad or mouse
     const aimDir = this.inputSystem.getAimDirection(this.player, pointer);
     if (aimDir) {
       const targetX = this.player.x + aimDir.x * 100; // Project aim 100 pixels out
       const targetY = this.player.y + aimDir.y * 100;
-      this.weaponSystem.update(this.player, weaponSpriteComp, targetX, targetY);
-    }
-    
-    // Handle shooting (gamepad or mouse)
-    const playerWeapon = this.player.getData('weapon') as WeaponComponent;
-    if (this.inputSystem.isFirePressed(pointer)) {
-      const timeSinceLastShot = time - playerWeapon.lastShotTime;
-      if (timeSinceLastShot > playerWeapon.fireRate) {
-        this.shootBullet(this.player, playerWeapon, time);
+      this.weaponSystem.updatePosition(this.player, weaponSpriteComp, targetX, targetY);
+      
+      // Handle shooting (gamepad or mouse)
+      if (this.inputSystem.isFirePressed(pointer)) {
+        // Fire from weapon sprite position, not player center
+        this.weaponSystem.tryFire(
+          playerWeapon,
+          this.bullets,
+          weaponSpriteComp.sprite.x,
+          weaponSpriteComp.sprite.y,
+          targetX,
+          targetY,
+          time,
+          damageMultiplier
+        );
       }
+    } else {
+      // No aim input - weapon defaults to facing right
+      const defaultTargetX = this.player.x + 100;
+      const defaultTargetY = this.player.y;
+      this.weaponSystem.updatePosition(this.player, weaponSpriteComp, defaultTargetX, defaultTargetY);
     }
     
     // Update enemies
@@ -267,13 +279,25 @@ export class GameScene extends Phaser.Scene {
       (bullet, enemy) => {
         const bulletSprite = bullet as Phaser.Physics.Arcade.Sprite;
         const enemySprite = enemy as Phaser.Physics.Arcade.Sprite;
+        const projectile = bulletSprite.getData('projectile') as ProjectileComponent;
         
-        // Destroy bullet
-        this.projectileSystem.destroyProjectile(bulletSprite);
+        // Check if this is a piercing projectile
+        if (projectile.pierceCount !== undefined && projectile.pierceCount > 0) {
+          // Decrement pierce count
+          projectile.pierceCount--;
+          
+          // Destroy if no pierces left
+          if (projectile.pierceCount <= 0) {
+            this.projectileSystem.destroyProjectile(bulletSprite);
+          }
+        } else if (projectile.specialEffect !== 'pierce_all') {
+          // Non-piercing projectiles are destroyed on hit
+          this.projectileSystem.destroyProjectile(bulletSprite);
+        }
+        // pierce_all projectiles never get destroyed
         
         // Damage enemy
         const enemyHealth = enemySprite.getData('health') as HealthComponent;
-        const projectile = bulletSprite.getData('projectile') as ProjectileComponent;
         const isDead = this.healthSystem.takeDamage(
           enemySprite,
           enemyHealth,
@@ -368,48 +392,7 @@ export class GameScene extends Phaser.Scene {
     );
   }
   
-  private shootBullet(
-    player: Phaser.Physics.Arcade.Sprite,
-    weapon: WeaponComponent,
-    time: number
-  ): void {
-    // Get pistol sprite position and rotation
-    const weaponSpriteComp = player.getData('weaponSprite') as WeaponSpriteComponent;
-    const pistol = weaponSpriteComp.sprite;
-    
-    // Calculate bullet spawn position at the tip of the pistol
-    const spawnOffset = 8; // Spawn bullets 8px from pistol center (at the tip)
-    const spawnX = pistol.x + Math.cos(pistol.rotation) * spawnOffset;
-    const spawnY = pistol.y + Math.sin(pistol.rotation) * spawnOffset;
-    
-    // Create bullet using entity factory (handles pooling)
-    const bullet = createBulletEntity(
-      this.bullets,
-      spawnX,
-      spawnY,
-      pistol.rotation,
-      weapon.damage,
-      weapon.bulletSpeed,
-      time
-    );
-    
-    if (!bullet) {
-      return;
-    }
-    
-    weapon.lastShotTime = time;
-    
-    // Pistol recoil animation
-    const originalScale = pistol.scale;
-    this.tweens.add({
-      targets: pistol,
-      scaleX: originalScale * 0.8,
-      scaleY: originalScale * 0.8,
-      duration: 50,
-      yoyo: true,
-      ease: 'Quad.easeOut',
-    });
-  }
+  // Note: shootBullet method removed - weapon firing now handled by WeaponSystem.tryFire()
   
   private updateEnemies(): void {
     const playerPos = new Phaser.Math.Vector2(this.player.x, this.player.y);
@@ -430,7 +413,7 @@ export class GameScene extends Phaser.Scene {
       if (!sprite.active) return;
       
       const projectile = sprite.getData('projectile') as ProjectileComponent;
-      this.projectileSystem.update(sprite, projectile, currentTime);
+      this.projectileSystem.update(sprite, projectile, currentTime, this.enemies);
     });
   }
   
