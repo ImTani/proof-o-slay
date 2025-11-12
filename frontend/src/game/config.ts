@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { MenuScene } from './scenes/MenuScene';
 import { GameScene } from './scenes/GameSceneECS';
-import { DISPLAY_CONFIG } from './config/GameConfig';
+import { DISPLAY_CONFIG, CHARACTER_CLASSES } from './config/GameConfig';
 
 export interface GameCallbacks {
   onGameOver: (shards: number) => void;
@@ -15,6 +15,7 @@ export interface GameUpgrades {
 export interface GameConfig {
   upgrades: GameUpgrades;
   callbacks: GameCallbacks;
+  selectedClass?: keyof typeof CHARACTER_CLASSES; // Selected character class
 }
 
 export const createGameConfig = (gameConfig: GameConfig): Phaser.Types.Core.GameConfig => {

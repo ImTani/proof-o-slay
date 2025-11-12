@@ -115,26 +115,46 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setZoom(CAMERA_CONFIG.ZOOM);
     this.cameras.main.roundPixels = CAMERA_CONFIG.ROUND_PIXELS;
     
+    // TEMPORARY: UI camera disabled for debugging
     // UI camera stays fixed (no zoom, no movement)
+    // This camera should ignore everything by default (we'll add UI elements to it explicitly)
+    /*
     this.uiCamera = this.cameras.add(0, 0, DISPLAY_CONFIG.WIDTH, DISPLAY_CONFIG.HEIGHT);
     this.uiCamera.setScroll(0, 0);
     this.uiCamera.setZoom(1); // Always 1:1 zoom
     this.uiCamera.roundPixels = true;
+    */
     
     // Create player entity at world center
     const upgrades: PlayerUpgrades = {
       hasArmor: this.gameConfig.upgrades.hasArmor,
       hasBoots: this.gameConfig.upgrades.hasBoots,
     };
+    
+    // Get selected class from game config (default to WARRIOR if not set)
+    const selectedClass = this.gameConfig.selectedClass || 'WARRIOR';
+    
     this.player = createPlayerEntity(
       this,
       WORLD_CONFIG.WIDTH / 2,
       WORLD_CONFIG.HEIGHT / 2,
-      upgrades
+      upgrades,
+      selectedClass
     );
     
     // Set player collision with world bounds
     this.player.setCollideWorldBounds(true);
+    
+    // TEMPORARY: Commented out for debugging
+    /*
+    // Make UI camera ignore player and weapon sprite (game world objects)
+    const weaponSpriteComp = this.player.getData('weaponSprite');
+    if (weaponSpriteComp && weaponSpriteComp.sprite) {
+      this.uiCamera.ignore([this.player, weaponSpriteComp.sprite]);
+    } else {
+      this.uiCamera.ignore(this.player);
+    }
+    */
     
     // Make main camera follow player with smooth lerp
     this.cameras.main.startFollow(this.player, CAMERA_CONFIG.ROUND_PIXELS, CAMERA_CONFIG.LERP_X, CAMERA_CONFIG.LERP_Y);
@@ -155,6 +175,10 @@ export class GameScene extends Phaser.Scene {
     
     this.enemies = this.physics.add.group();
     this.shards = this.physics.add.group();
+    
+    // Make UI camera ignore game object groups (all children will inherit this)
+    // Note: We can't directly ignore groups, but we'll need to ignore individual sprites as they're created
+    // For now, this ensures the groups themselves don't interfere
     
     // Set up collisions
     this.setupCollisions();
@@ -469,10 +493,11 @@ export class GameScene extends Phaser.Scene {
     this.healthBarFill = this.add.rectangle(0, 0, hpBar.width, hpBar.height, hpBar.healthyColor);
     this.healthBarFill.setOrigin(0, 0.5);
     
+    // TEMPORARY: Commented out for debugging
     // Make health bars ignore UI camera (only visible on main camera)
-    this.healthBarBg.setScrollFactor(1);
-    this.healthBarFill.setScrollFactor(1);
-    this.uiCamera.ignore([this.healthBarBg, this.healthBarFill]);
+    // this.healthBarBg.setScrollFactor(1);
+    // this.healthBarFill.setScrollFactor(1);
+    // this.uiCamera.ignore([this.healthBarBg, this.healthBarFill]);
     
     // UI text - using fixed padding from edges for scalability
     const padding = 20;
@@ -499,8 +524,10 @@ export class GameScene extends Phaser.Scene {
       fontFamily: textStyle.fontFamily,
     });
     
-    // Make text UI elements ignore main camera (only visible on UI camera)
-    this.cameras.main.ignore([this.healthText, this.shardText, this.waveText]);
+    // Fix UI text to camera so they don't scroll with the game world
+    this.healthText.setScrollFactor(0);
+    this.shardText.setScrollFactor(0);
+    this.waveText.setScrollFactor(0);
     
     // Set depth to ensure UI text is on top
     this.healthText.setDepth(1000);
@@ -577,10 +604,10 @@ export class GameScene extends Phaser.Scene {
       }
     );
     shardsText.setOrigin(0.5);
+    shardsText.setScrollFactor(0);
     shardsText.setDepth(2000);
     
-    // Make game over UI elements ignore main camera (only visible on UI camera)
-    this.cameras.main.ignore([gameOverText, shardsText]);
+    gameOverText.setScrollFactor(0);
     
     // Play Again button - using button factory
     const playAgainButton = createButton(
@@ -631,16 +658,8 @@ export class GameScene extends Phaser.Scene {
       }
     );
     hintText.setOrigin(0.5);
+    hintText.setScrollFactor(0);
     hintText.setDepth(2000);
-    
-    // Make buttons and hint ignore main camera (only visible on UI camera)
-    this.cameras.main.ignore([
-      playAgainButton.highlight, 
-      playAgainButton.text, 
-      menuButton.highlight, 
-      menuButton.text, 
-      hintText
-    ]);
   }
   
   private togglePause(): void {
@@ -684,6 +703,7 @@ export class GameScene extends Phaser.Scene {
       0x000000,
       0.7
     );
+    this.pauseOverlay.setScrollFactor(0);
     this.pauseOverlay.setDepth(1500);
     
     // Title
@@ -699,6 +719,8 @@ export class GameScene extends Phaser.Scene {
       }
     );
     this.pauseTitle.setOrigin(0.5);
+    this.pauseTitle.setScrollFactor(0);
+    this.pauseTitle.setDepth(1600);
     this.pauseTitle.setDepth(1600);
     
     // Resume button - using button factory
@@ -734,7 +756,9 @@ export class GameScene extends Phaser.Scene {
       }
     );
     
+    // TEMPORARY: Commented out for debugging
     // Make pause menu ignore main camera (only visible on UI camera)
+    /*
     this.cameras.main.ignore([
       this.pauseOverlay, 
       this.pauseTitle,
@@ -743,6 +767,7 @@ export class GameScene extends Phaser.Scene {
       this.pauseMenuButton.highlight,
       this.pauseMenuButton.text
     ]);
+    */
     
     // Register with focus manager (auto-focus will handle first focus)
     this.focusManager.clear();
@@ -800,6 +825,10 @@ export class GameScene extends Phaser.Scene {
     );
     tilingBg.setOrigin(0, 0);
     tilingBg.setDepth(-1); // Behind everything else
+    
+    // TEMPORARY: Commented out for debugging
+    // Make UI camera ignore the background (it's a game world object)
+    // this.uiCamera.ignore(tilingBg);
   }
   
   private createPlaceholderGraphics(): void {
