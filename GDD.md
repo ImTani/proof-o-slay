@@ -1,1472 +1,886 @@
-# Game Design Document: DungeonForge (Working Title)
+# 🎮 Proof O' Slay - Game Design Document
 
-## 1. Elevator Pitch
-
-**DungeonForge** is a fast-paced, top-down rogue-lite. Players battle through monster-filled rooms to earn an off-chain currency ("Glimmering Shards"). After each run, they return to their Hub, where they can "forge" their Shards into an on-chain token (`$DUNGEON`). This token is then used to buy permanent, on-chain upgrades (owned objects as NFTs) that make their next run easier, creating an addictive, high-stakes game loop.
-
-## 2. Core Pillars
-
-* **Fast & Responsive:** The core game (Phaser) must feel immediate and satisfying. Controls are tight, combat is fast.
-* **Addictive Loop:** The "one more run" feeling is paramount. The loop from (Off-Chain Play) -> (On-Chain Reward) -> (On-Chain Upgrade) -> (Stronger Off-Chain Play) must be compelling.
-* **Modular by Design:** The game is built using composition, not inheritance. New enemies, items, and upgrades should be "plug-and-play" by combining components, not by writing new complex classes.
-* **True Asset Ownership:** Upgrades are not just database entries; they are on-chain objects in the player's wallet.
+**Last Updated:** November 12, 2025  
+**Status:** Scope finalized, ready for implementation  
+**Genre:** Vampire Survivors-style Auto-Shooter with Blockchain Progression
 
 ---
 
-## 3. MVP Scope (Hackathon Lock-Down)
-
-To meet the hackathon deadline, the following is the absolute minimum.
-
-| Category | Feature | Description |
-| :--- | :--- | :--- |
-| **Game (Phaser)** | **1. Player Character** | A single sprite with 8-directional movement (WASD) and mouse-look (aiming). |
-| | **2. Weapon System** | Player clicks to shoot a single "magic bolt" projectile. |
-| | **3. Enemy AI** | 1 enemy type: "Slime." It slowly moves toward the player (simple vector math, not complex pathfinding). |
-| | **4. Room System** | A single, static rectangular room (800x600). Enemies spawn in waves. |
-| | **5. Game Loop** | Player survives waves until HP hits 0. "Game Over" screen shows Shards collected. |
-| | **6. Currency** | 1 off-chain currency: "Glimmering Shards," dropped by enemies. |
-| | **7. Visual Feedback** | Health bar above player, damage flash on hit, particle effect on shard pickup. |
-| **Backend** | **1. Signature Service** | A simple Node.js server that signs shard amounts to prevent exploit. |
-| **UI (React)** | **1. Hub Screen** | Main UI. Shows `Connect Wallet`, `Start Run`, `Forge`, and `Shop` buttons. |
-| | **2. Balances** | Displays user's `$DUNGEON` balance (sum of owned coin objects) and their "Glimmering Shards" (off-chain, in React state). |
-| | **3. Upgrade Display** | Shows which upgrades are owned (query owned objects from chain). |
-| **Blockchain (Sui SDK)** | **1. Wallet Connect** | User connects via Sui Wallet Standard. |
-| | **2. Move Package** | A single Move package that handles both token minting AND upgrades as owned objects. |
-| | **3. Token** | `$DUNGEON` token (Sui Coin standard), minted via the game module. |
-| | **4. Upgrades** | 2 simple upgrades stored as owned objects (NFTs). |
+## 📋 Table of Contents
+1. [Elevator Pitch](#elevator-pitch)
+2. [Core Pillars](#core-pillars)
+3. [Scope Evolution](#scope-evolution)
+4. [Core Systems](#core-systems)
+5. [Game Economy](#game-economy)
+6. [Progression & Scaling](#progression--scaling)
+7. [Technical Architecture](#technical-architecture)
+8. [Security Model](#security-model)
+9. [Success Criteria](#success-criteria)
+10. [Demo Strategy](#demo-strategy)
 
 ---
 
-## 4. Internal Game Economy (Self-Contained)
+## 1. Elevator Pitch {#elevator-pitch}
 
-The token exists purely to create an on-chain "feel" and progression loop. It has no external value.
+**Proof O' Slay** is a fast-paced, top-down **Vampire Survivors-style auto-shooter** with exponential power scaling and blockchain-backed progression. Players battle through infinite enemy hordes in an endless scrolling world, earning "Glimmering Shards" that forge into `$SLAY` tokens. 
 
-| Resource | Earn Rate | Cost | Purpose |
-| :--- | :--- | :--- | :--- |
-| **Glimmering Shards** | ~50-100 per run (10 waves @ 5-10 shards/wave) | Free (earned in-game) | Off-chain currency, earned by killing enemies |
-| **$DUNGEON Token** | 1 Shard = 1 $DUNGEON (1:1 forge rate) | Costs your Shards | On-chain currency, used to buy upgrades |
-| **Hero's Armor** | N/A | 300 $DUNGEON | Upgrade: +20 max HP (100 -> 120) |
-| **Swift Boots** | N/A | 500 $DUNGEON | Upgrade: +20% movement speed |
+Choose from **3 unique character classes** (Warrior, Mage, Rogue), each with distinct skills and playstyles. Unlock **6 weapons** ranging from starter gear to endgame legendaries. Purchase and upgrade **5 types of NFTs** that provide exponential stat boosts, creating a godlike power fantasy. The game scales dynamically—the stronger you get, the tougher the enemies become—ensuring runs inevitably end in glorious defeat after 15-25 minutes.
 
-**Balancing Goal:** First upgrade (Armor) should take 3-4 runs. Second upgrade (Boots) should take 5-6 runs. This creates a ~1-2 hour demo loop.
+**Core Loop:** Play (off-chain) → Earn Shards → Forge Tokens → Buy/Upgrade NFTs (on-chain) → Play Stronger
 
 ---
 
-## 5. Security: The Forge System
+## 2. Core Pillars {#core-pillars}
 
-**The Problem:** Players collect Shards off-chain. Without verification, they could call `forge_tokens(999999)` directly.
+### 🎯 Fast & Chaotic Gameplay
+Vampire Survivors-inspired combat with screen-filling enemies and immediate, satisfying feedback. Tight WASD controls, instant projectile response, and explosive power escalation.
 
-**The Solution:** Backend Signature Verification
+### 💪 Exponential Power Fantasy
+Go from carefully kiting 5 slimes to obliterating 200 enemies simultaneously. Each upgrade provides meaningful, visible power increases. Late-game runs feel like you're controlling a force of nature.
 
-1. **Game End:** Phaser emits `{ shards: 250, timestamp: 1234567890, playerAddress: '0x...' }`
-2. **React Requests Signature:** React sends this data to your Node.js backend: `POST /api/sign-forge`
-3. **Backend Validates & Signs:** 
-   - Backend checks if this is a reasonable shard amount (< 500 per run)
-   - Backend signs the data using ECDSA secp256k1: `signature = sign(shards, timestamp, playerAddress)`
-4. **React Calls Move Function:** React creates a Transaction calling `forge_tokens_with_signature(shards, timestamp, signature)`
-5. **Move Module Verifies:** Module uses `sui::ecdsa_k1::secp256k1_verify` to verify the signature came from your backend
-6. **Move Module Mints:** If valid, mint $DUNGEON coins to player
+### 🔁 Addictive Loop
+The "one more run" feeling is paramount. Short 15-25 minute sessions with clear progression markers. Every run makes you stronger, every death teaches you something new.
 
-**Backup Plan (If No Time for Backend):** For the hackathon demo, you can skip the backend and have the Move module trust the frontend. **Acknowledge this to judges**: "In production, we'd add signature verification, but for the demo, we're focused on the gameplay loop."
+### 🧩 Component-Based Architecture
+Built on ECS principles (Entity-Component-System). New content is data-driven—add enemies, weapons, or classes by updating config files, not rewriting code. Godot-style composition over inheritance.
 
----
+### 🔗 True Asset Ownership
+Upgrades are **upgradeable NFTs** in your wallet, not database entries. Your Power Ring Level 5 is a tradeable blockchain asset. Progression persists across devices and can be transferred or sold.
 
-## 6. The Core Game Loop (Step-by-Step)
+### ⚔️ Class Identity
+Three distinct classes with unique base stats, starting weapons, and cooldown-based active skills. Warrior (bruiser mobility), Mage (glass cannon AoE), Rogue (evasion defense). Class choice fundamentally changes playstyle.
 
-1. **React Hub (Sui SDK):** User connects their Sui-compatible wallet.
-2. **React Hub (Sui SDK):** The app queries owned objects to check if user owns `Armor` or `Boots` upgrade objects.
-3. **React Hub -> Phaser:** User clicks "Start Run." React launches Phaser via:
-   ```javascript
-   const gameConfig = {
-     upgrades: { hasArmor: true, hasBoots: false },
-     onGameOver: (shards) => handleGameOver(shards)
-   };
-   const game = new Phaser.Game(gameConfig);
-   ```
-4. **Phaser (Game Init):** The main scene reads `gameConfig.upgrades`:
-   - If `hasArmor`, set `player.maxHealth = 120` (instead of 100)
-   - If `hasBoots`, set `player.speed = 120` (instead of 100)
-5. **Phaser (Gameplay):** Player fights slimes, collects Shards (stored in `this.shardCount`).
-6. **Phaser (Game Over):** Player HP reaches 0. Phaser calls `gameConfig.onGameOver(this.shardCount)`.
-7. **React Hub (UI):** `handleGameOver` updates state: `pendingShards = 250`.
-8. **React Hub (Signature):** User clicks "Forge." React sends `{ shards: 250, address, timestamp }` to backend.
-9. **Backend:** Returns `{ signature }`.
-10. **React Hub (Sui SDK):** React creates a Programmable Transaction Block (PTB) that calls the Move forge function.
-11. **Wallet:** Wallet pops up to sign transaction.
-12. **React Hub (Sui SDK):** Transaction confirms. User's `$DUNGEON` balance updates (query owned coin objects). They can now buy upgrades.
-13. **(Loop)**
+### ♾️ Infinite Progression
+No arbitrary "final level." Enemies scale infinitely with time survived. The question isn't "can I win?" but "how long can I survive?"
 
 ---
 
-## 7. Technical Architecture
+## 3. Scope Evolution {#scope-evolution}
 
-### Phaser ↔ React Communication Bridge
+## 3. Scope Evolution {#scope-evolution}
 
-**Option A: Callback Functions (Recommended)**
-```javascript
-// In React:
-const handleGameOver = (shards) => {
-  setPendingShards(shards);
-  setGameState('ended');
-};
+### Original MVP (Minimal Concept)
+- ❌ 1 player character, 1 enemy type
+- ❌ 2 simple upgrades (Armor, Boots)
+- ❌ Wave-based gameplay in static room
+- ❌ Basic survive-until-dead loop
 
-const phaserConfig = {
-  // ... standard Phaser config
+### Expanded MVP (Current Target)
+- ✅ **3 character classes** with unique skills and playstyles
+- ✅ **6 weapons** (3 class starters, 2 unlockables, 1 endgame bragging rights)
+- ✅ **5 upgradeable NFTs** (Level 1-5 each, exponential bonuses)
+- ✅ **5 power-up pickups** (temporary 10-25s buffs)
+- ✅ **3 enemy types** with infinite time-based scaling
+- ✅ **Infinite scrolling world** (seamless camera follow)
+- ✅ **Off-chain consumables** (Shard-based pre-run buffs)
+- ✅ **Exponential power scaling** (8-10x power at max build)
+
+**Rationale:** The minimal version lacked replayability and depth. By expanding to class variety, meaningful progression, and dynamic scaling, we create the addictive "one more run" loop that makes Vampire Survivors-style games successful.
+
+---
+
+## 4. Core Systems {#core-systems}
+
+### 4.1 Character Classes
+
+Players choose a class before each run. Classes have different base stats, starting weapons, and unique active skills (Spacebar).
+
+#### 🗡️ Warrior (Balanced Bruiser)
+| Stat | Value | Description |
+|------|-------|-------------|
+| **HP** | 120 | Highest survivability |
+| **Speed** | 100 | Standard movement |
+| **Damage** | 1.0x | Baseline multiplier |
+| **Weapon** | Iron Sword | Melee arc, 3-pierce |
+
+**Skill: Battle Dash**
+- **Cooldown:** 5 seconds
+- **Effect:** Dash 200px forward, invincible 0.5s, 20 damage to enemies passed through
+- **Use Case:** Gap closer, dodge, escape crowds
+- **Visual:** Blue afterimage trail
+
+---
+
+#### 🔮 Mage (Glass Cannon)
+| Stat | Value | Description |
+|------|-------|-------------|
+| **HP** | 80 | Lowest survivability |
+| **Speed** | 90 | Slightly slower |
+| **Damage** | 1.3x | Highest damage output |
+| **Weapon** | Arcane Staff | Homing orbs |
+
+**Skill: Arcane Nova**
+- **Cooldown:** 8 seconds
+- **Effect:** 150 damage to all enemies in 300px radius, knockback
+- **Use Case:** Clear dense packs, emergency breathing room
+- **Visual:** Purple energy explosion with shockwave
+
+---
+
+#### 🗡️ Rogue (High Mobility Assassin)
+| Stat | Value | Description |
+|------|-------|-------------|
+| **HP** | 100 | Balanced survivability |
+| **Speed** | 120 | Fastest movement |
+| **Damage** | 1.1x | Slightly above baseline |
+| **Weapon** | Twin Daggers | Dual-shot rapid fire |
+
+**Skill: Phantom Barrier**
+- **Cooldown:** 10 seconds
+- **Effect:** Absorb next 100 damage, lasts 6 seconds or until broken
+- **Use Case:** Tank damage spikes, survive boss attacks
+- **Visual:** Translucent golden shield bubble
+
+---
+
+### 4.2 Weapon System
+
+Six total weapons, each with distinct mechanics and acquisition methods.
+
+| Weapon | Type | Acquire | Damage | Cooldown | Range | Special |
+|--------|------|---------|--------|----------|-------|---------|
+| **Iron Sword** | Melee Arc | Warrior starter | 15 | 0.5s | 50px | Pierce 3 enemies |
+| **Arcane Staff** | Homing | Mage starter | 12 | 0.6s | 300px | Auto-targets nearest |
+| **Twin Daggers** | Dual-Shot | Rogue starter | 8×2 | 0.3s | 200px | Spread pattern |
+| **Heavy Crossbow** | Piercing | 10% Tank drop | 30 | 1.2s | 400px | Pierce all enemies |
+| **Flamethrower** | Cone DoT | 1500 $SLAY | 5/tick | 0.1s | 150px | Continuous cone AoE |
+| **Celestial Cannon** | Explosive | 10000 $SLAY | 100 | 2.0s | 600px | 200px explosion radius |
+
+**Weapon Progression:**
+- **Early Game (0-5 min):** Class starter weapon, single-target focused
+- **Mid Game (5-15 min):** Unlock Crossbow from Tank drops, wider coverage
+- **Late Game (15+ min):** Purchase Flamethrower for screen control
+- **Endgame (20+ runs):** Celestial Cannon as ultimate bragging rights weapon
+
+---
+
+### 4.3 Enemy Types & AI
+
+Three enemy types with distinct behaviors that scale infinitely with time survived.
+
+#### 🟢 Slime (Basic Chaser)
+| Stat | Base Value | Behavior |
+|------|------------|----------|
+| **HP** | 30 | Direct chase AI |
+| **Speed** | 40 | Slow melee |
+| **Damage** | 10 | Contact damage |
+| **Loot** | 1 shard | 8% power-up drop |
+
+**AI:** Simple pathfinding toward player. No special attacks.
+
+---
+
+#### 🏹 Archer (Ranged Kiter)
+| Stat | Base Value | Behavior |
+|------|------------|----------|
+| **HP** | 20 | Kite & shoot |
+| **Speed** | 30 | Maintains 200px distance |
+| **Damage** | 15 | Projectile attack |
+| **Loot** | 1 shard | 6% power-up drop |
+
+**AI:** Moves away from player when closer than 200px. Fires arrow every 2 seconds. Prioritizes staying at range.
+
+---
+
+#### 🛡️ Tank (Mini-Boss)
+| Stat | Base Value | Behavior |
+|------|------------|----------|
+| **HP** | 200 | Slow chase |
+| **Speed** | 25 | Unstoppable advance |
+| **Damage** | 25 | Heavy contact damage |
+| **Loot** | 5 shards | 30% power-up, 10% Crossbow |
+
+**AI:** Direct chase with high knockback resistance. Spawns every 10 minutes as a boss encounter.
+
+---
+
+### 4.4 Time-Based Scaling System
+
+Enemies scale dynamically based on time survived to match player power growth.
+
+**Scaling Formulas:**
+```
+Enemy HP = Base HP × (1 + 0.05 × minutes_survived)
+Enemy Damage = Base Damage × (1 + 0.04 × minutes_survived)
+Enemy Speed = Base Speed × (1 + 0.02 × minutes_survived)
+Spawn Rate = Base Rate × (1 + 0.1 × minutes_survived)
+```
+
+**Example Progression:**
+
+| Time | Slime HP | Slime Damage | Spawn Rate | Feel |
+|------|----------|--------------|------------|------|
+| **0 min** | 30 (100%) | 10 (100%) | 1/sec | Tense, careful dodging |
+| **10 min** | 45 (150%) | 14 (140%) | 2/sec | Building confidence |
+| **20 min** | 60 (200%) | 18 (180%) | 3/sec | Screen-filling chaos |
+| **30 min** | 75 (250%) | 22 (220%) | 4/sec | Inevitable death approaches |
+
+**Death Timer:** Most runs end between 15-25 minutes as enemy scaling eventually outpaces player power, ensuring no run lasts forever.
+
+---
+
+### 4.5 Power-Up Pickups (Temporary Buffs)
+
+Five temporary buffs that drop from enemy kills, creating exciting power spikes during runs.
+
+| Power-Up | Drop Rate | Duration | Effect | Visual |
+|----------|-----------|----------|--------|--------|
+| **⚡ Speed Boost** | 8% | 15s | +50% movement speed | Yellow glow, trailing particles |
+| **🔥 Rapid Fire** | 6% | 12s | -50% weapon cooldowns | Red weapon glow |
+| **🛡️ Shield** | 5% | 20s | Absorb 150 damage | Blue bubble, cracks when hit |
+| **🧲 Magnet** | 7% | 20s | Auto-collect shards 400px | Green sparkles |
+| **💎 Double Shards** | 3% | 25s | 2x shard drops | Golden aura |
+
+**Stacking Rules:**
+- Same type: Duration refreshes (no stacking)
+- Different types: Can have multiple active simultaneously
+- UI: Icons with countdown timers above health bar
+
+---
+
+### 4.6 Upgradeable NFTs (On-Chain Progression)
+
+Five NFT types, each upgradeable from Level 1 to Level 5. Bonuses stack exponentially.
+
+| NFT | Base Cost | L2 | L3 | L4 | L5 | Effect | Bonus Formula |
+|-----|-----------|-----|-----|-----|-----|--------|---------------|
+| **💍 Power Ring** | 300 | 600 | 1200 | 2400 | 4800 | +20% damage/level | Exponential |
+| **❤️ Vitality Amulet** | 400 | 800 | 1600 | 3200 | 6400 | +25 HP/level | Flat |
+| **👢 Swift Boots** | 500 | 1000 | 2000 | 4000 | 8000 | +15% speed/level | Exponential |
+| **🔍 Mystic Lens** | 600 | 1200 | 2400 | 4800 | 9600 | +20% range/level | Exponential |
+| **🍀 Lucky Pendant** | 800 | 1600 | 3200 | 6400 | 12800 | +10% drops/level | Exponential |
+
+**Exponential Stacking Formula:**  
+```
+Total Bonus = (1 + base_bonus)^level - 1
+```
+
+**Example: Power Ring Progression**
+- Level 1: (1.2)^1 - 1 = **+20.0% damage**
+- Level 2: (1.2)^2 - 1 = **+44.0% damage**
+- Level 3: (1.2)^3 - 1 = **+72.8% damage**
+- Level 4: (1.2)^4 - 1 = **+107.4% damage**
+- Level 5: (1.2)^5 - 1 = **+148.8% damage**
+
+**Max Power Build (All Level 5):**
+- Damage: Base × 2.488 = **+148.8%**
+- HP: Base + 125 = **+125 HP**
+- Speed: Base × 2.011 = **+101.1%**
+- Range: Base × 2.488 = **+148.8%**
+- Drop Rate: Base × 1.610 = **+61.0%**
+
+**Effective Power Multiplier:** ~8-10x base power at full build
+
+---
+
+### 4.7 Consumables (Off-Chain, Shard-Based)
+
+Pre-run buffs purchased with Shards (off-chain currency). Applied for entire run duration.
+
+| Consumable | Cost (Shards) | Effect | Duration |
+|------------|---------------|--------|----------|
+| **🔥 Damage Elixir** | 100 | +50% damage | Entire run |
+| **❤️ Extra Life** | 200 | Revive once at 50% HP | One-time per run |
+| **🍀 Lucky Charm** | 150 | +50% shard drops | Entire run |
+| **⚡ Speed Potion** | 80 | +30% movement speed | Entire run |
+| **💰 Starting Gold** | 50 | +500 bonus starting XP | Run start |
+
+**Purchase Flow:**
+1. Player spends Shards in React Hub shop
+2. Consumable added to off-chain inventory (React state)
+3. Player checks consumable before run
+4. Buff applied to Phaser game on initialization
+5. Consumable consumed after run ends
+
+---
+
+### 4.8 Infinite World System
+
+**Camera:**
+- Follows player with smooth lerp (0.1, 0.1)
+- World bounds: 10000 × 10000 units (effectively infinite)
+- Background: Seamlessly tiling texture
+
+**Enemy Spawning:**
+- Spawn off-screen (camera edges + 100px margin)
+- Random edge selection (top/right/bottom/left)
+- Perpetual spawning (no wave system)
+- Spawn rate increases +10% per minute
+
+**Performance:**
+- Max 500 enemies alive simultaneously
+- Cull enemies >2000px from camera
+- Object pooling for bullets and enemies
+- Destroy projectiles after 5 seconds
+
+---
+
+## 5. Game Economy {#game-economy}
+
+### 5.1 Currency Flow
+
+```
+Kill Enemies → Earn Shards (off-chain)
+                    ↓
+        ┌───────────┴───────────┐
+        ↓                       ↓
+Spend on Consumables    Forge into $SLAY (on-chain)
+   (temporary buffs)             ↓
+                        Buy/Upgrade NFTs
+                              ↓
+                     Apply Permanent Bonuses
+                              ↓
+                        Play Stronger
+```
+
+**Two Currencies:**
+
+| Currency | Type | Earn Method | Spend On | Conversion |
+|----------|------|-------------|----------|------------|
+| **Glimmering Shards** | Off-chain | Kill enemies (1-5 per kill) | Consumables, Forge | 1 Shard = 1 $SLAY |
+| **$SLAY Token** | On-chain | Forge Shards | NFT buy/upgrade, Weapons | Can't convert back |
+
+### 5.2 Shard Earn Rate
+
+**Base Earn Rate:**
+- Early game (0-5 min): ~1 shard per enemy kill
+- Mid game (5-15 min): ~2-3 shards per enemy
+- Late game (15+ min): ~5+ shards per enemy
+- Boss kills (Tanks): 5x multiplier
+
+**Run Length Projections:**
+- Beginner (5-10 min): **100-200 shards**
+- Average (10-18 min): **250-400 shards**
+- Expert (18-25 min): **400-600 shards**
+
+**Modifiers:**
+- Lucky Pendant NFT: +10-61% drops (based on level)
+- Lucky Charm Consumable: +50% for one run
+- Double Shards Power-Up: 2x for 25 seconds
+
+---
+
+## 6. Progression & Scaling {#progression--scaling}
+
+### 6.1 Player Progression Timeline
+
+| Milestone | Shards Needed | Runs @ 300/run | Time @ 15min/run |
+|-----------|---------------|----------------|------------------|
+| **First NFT** (Power Ring L1) | 300 | 1 run | 15 minutes |
+| **Second NFT** (Vitality L1) | 400 | 1.3 runs | 20 minutes |
+| **Full L1 Set** (5 NFTs) | 2,600 | 8.7 runs | **2.2 hours** |
+| **Power Ring → L5** | 9,300 total | 31 runs | 7.8 hours |
+| **All NFTs → L3** | ~24,000 | 80 runs | **20 hours** |
+| **All NFTs → L5** | ~80,600 | 270 runs | **67.5 hours** |
+| **Celestial Cannon** | 10,000 | 33 runs | 8.3 hours |
+
+**Target Player Journey:**
+- **Session 1 (1-2 hours):** Get first 2-3 Level 1 NFTs, immediate power spike
+- **Week 1 (5-10 hours):** Complete Level 1 set, upgrade favorites to L2-L3
+- **Month 1 (20-40 hours):** Push high-level NFTs (L4-L5), unlock Flamethrower
+- **Long-term (50+ hours):** Max everything, grind for Celestial Cannon
+
+### 6.2 Power Curve Visualization
+
+**Early Game (No NFTs):**
+- Base damage: 10
+- Base HP: 80-120 (class dependent)
+- Kill 1-2 enemies per second
+- Survive ~5-10 minutes
+
+**Mid Game (L1-L2 NFTs):**
+- Damage: 14-18 (+40-80%)
+- HP: 105-170 (+25-50 HP)
+- Kill 5-10 enemies per second
+- Survive ~10-15 minutes
+
+**Late Game (L3-L4 NFTs):**
+- Damage: 20-30 (+100-200%)
+- HP: 155-220 (+75-100 HP)
+- Kill 15-30 enemies per second
+- Survive ~15-20 minutes
+
+**Endgame (All L5 NFTs):**
+- Damage: 35-45 (+250-350%)
+- HP: 205-245 (+125 HP)
+- Kill 50+ enemies per second
+- Survive ~20-25 minutes (death inevitable)
+
+---
+
+## 7. Technical Architecture {#technical-architecture}
+
+### 7.1 Component-Based ECS Structure
+
+**Philosophy:** Composition over inheritance, inspired by Godot's node system.
+
+```
+frontend/src/game/
+├── config/
+│   └── GameConfig.ts          # All data (weapons, classes, enemies, NFTs)
+│
+├── components/                # Pure data structures
+│   ├── HealthComponent.ts     # { current, max }
+│   ├── MovementComponent.ts   # { speed, velocity }
+│   ├── WeaponComponent.ts     # { type, fireRate, damage }
+│   ├── AIComponent.ts         # { behavior, targetPosition }
+│   ├── ClassComponent.ts      # { type, skillCooldown }
+│   ├── PowerUpComponent.ts    # { type, duration, effect }
+│   └── ScalingComponent.ts    # { spawnTime, baseStats }
+│
+├── systems/                   # Pure logic operating on components
+│   ├── InputSystem.ts         # WASD + mouse + spacebar
+│   ├── MovementSystem.ts      # Apply velocity to position
+│   ├── AISystem.ts            # Chase, kite, shoot behaviors
+│   ├── WeaponSystem.ts        # Weapon firing logic
+│   ├── SkillSystem.ts         # Class ability execution
+│   ├── PowerUpSystem.ts       # Buff timer management
+│   ├── ProjectileSystem.ts    # Bullet movement & collision
+│   ├── HealthSystem.ts        # Damage application
+│   ├── SpawnSystem.ts         # Perpetual enemy spawning
+│   └── ScalingSystem.ts       # Time-based stat scaling
+│
+├── entities/                  # Factory functions (composition)
+│   ├── PlayerEntity.ts        # createPlayer(class, nftBonuses, consumables)
+│   ├── WarriorEntity.ts       # Warrior-specific setup
+│   ├── MageEntity.ts          # Mage-specific setup
+│   ├── RogueEntity.ts         # Rogue-specific setup
+│   ├── SlimeEntity.ts         # createSlime(spawnTime)
+│   ├── ArcherEntity.ts        # createArcher(spawnTime)
+│   ├── TankEntity.ts          # createTank(spawnTime)
+│   ├── BulletEntity.ts        # Weapon projectile factories
+│   ├── ShardEntity.ts         # createShard(position)
+│   └── PowerUpEntity.ts       # createPowerUp(type, position)
+│
+└── scenes/
+    ├── MenuScene.ts           # Class selection
+    └── GameSceneECS.ts        # Main game loop (system orchestration)
+```
+
+**Adding New Content Example:**
+
+```typescript
+// 1. Add weapon to GameConfig.ts
+WEAPONS.LASER_RIFLE = {
+  name: 'Laser Rifle',
+  fireRate: 100,
+  damage: 3,
+  bulletSpeed: 800,
+  specialEffect: 'pierce_infinite'
+}
+
+// 2. Create entity factory (if needed)
+export function createLaserBullet(scene, x, y, angle) {
+  const bullet = scene.bullets.get(x, y, 'laser');
+  bullet.setData('projectile', { damage: 3, pierce: Infinity });
+  bullet.setRotation(angle);
+  scene.physics.velocityFromRotation(angle, 800, bullet.body.velocity);
+  return bullet;
+}
+
+// 3. Wire into WeaponSystem (reads config automatically)
+```
+
+**NO code changes needed** for new enemies, classes, or power-ups—just update config files.
+
+### 7.2 React ↔ Phaser Bridge
+
+**Communication Flow:**
+
+```typescript
+// React → Phaser (game start)
+const gameConfig = {
+  classType: 'Warrior',
+  nftBonuses: {
+    damage: 1.728,  // Power Ring L3
+    hp: 50,         // Vitality Amulet L2
+    speed: 1.322,   // Swift Boots L2
+    range: 1.2,     // Mystic Lens L1
+    dropRate: 1.21  // Lucky Pendant L2
+  },
+  consumables: {
+    damageBoost: 1.5,   // Damage Elixir
+    extraLife: true,    // Extra Life
+    luckyCharm: 1.5     // Lucky Charm
+  },
+  unlockedWeapons: ['Flamethrower'],
   callbacks: {
-    onGameOver: handleGameOver
+    onGameOver: (stats) => handleGameOver(stats)
   }
 };
 
-// In Phaser (GameScene.js):
-gameOver() {
-  this.game.config.callbacks.onGameOver(this.shardCount);
-}
+// Phaser → React (game end)
+this.game.config.callbacks.onGameOver({
+  shards: 350,
+  timeAlive: 18.5, // minutes   
+  enemiesKilled: 1247
+});
 ```
 
-**Option B: Window Events (Alternative)**
-```javascript
-// In Phaser:
-window.dispatchEvent(new CustomEvent('game-over', { detail: { shards: 250 }}));
+### 7.3 Blockchain Architecture
 
-// In React:
-useEffect(() => {
-  const handler = (e) => setPendingShards(e.detail.shards);
-  window.addEventListener('game-over', handler);
-  return () => window.removeEventListener('game-over', handler);
-}, []);
+**Smart Contract Structure:**
+
+```
+contracts/proof_o_slay/sources/
+└── proof_o_slay.move
+    ├── DUNGEON token (Coin<DUNGEON>)
+    ├── Treasury (shared object for payments)
+    │
+    ├── Upgradeable NFTs (owned objects)
+    │   ├── PowerRing { id, level }
+    │   ├── VitalityAmulet { id, level }
+    │   ├── SwiftBoots { id, level }
+    │   ├── MysticLens { id, level }
+    │   └── LuckyPendant { id, level }
+    │
+    ├── Weapon NFTs
+    │   └── WeaponNFT { id, type, stats }
+    │
+    ├── Functions
+    │   ├── forge_tokens(amount)        # Mint $SLAY from Shards
+    │   ├── buy_* (5 NFT types)         # Purchase Level 1 NFT
+    │   ├── upgrade_* (5 NFT types)     # Upgrade NFT level
+    │   ├── buy_weapon(type)            # Purchase weapon NFT
+    │   └── query_* (stats functions)   # Read NFT stats
 ```
 
-### Move Package Structure
-
-**Single Unified Module: `dungeon_forge.move`**
-
-```move
-module dungeon_forge::game;
-
-use sui::coin::{Self, Coin};
-use sui::balance::{Self, Balance};
-
-/// The main game token
-public struct DUNGEON has drop {}
-
-/// Upgrade: Armor (owned object)
-public struct Armor has key, store {
-    id: UID,
-    owner: address,
-    bonus_hp: u64,
-}
-
-/// Upgrade: Boots (owned object)
-public struct Boots has key, store {
-    id: UID,
-    owner: address,
-    speed_multiplier: u64, // e.g., 120 for 20% boost
-}
-
-/// Treasury for collecting spent tokens
-public struct Treasury has key {
-    id: UID,
-    balance: Balance<DUNGEON>,
-}
-
-/// One-time witness for initializing the coin
-public struct GAME has drop {}
-
-/// Module initializer
-fun init(witness: GAME, ctx: &mut TxContext) {
-    // Create the currency
-    let (treasury_cap, metadata) = coin::create_currency(
-        witness,
-        6, // decimals
-        b"DUNGEON",
-        b"Dungeon Token",
-        b"Currency for DungeonForge",
-        option::none(),
-        ctx
-    );
-    
-    transfer::public_freeze_object(metadata);
-    
-    // Create treasury to hold spent tokens
-    let treasury = Treasury {
-        id: object::new(ctx),
-        balance: balance::zero(),
-    };
-    transfer::share_object(treasury);
-    
-    // Transfer treasury_cap to publisher for minting
-    transfer::public_transfer(treasury_cap, ctx.sender());
-}
-
-/// Forge shards into $DUNGEON tokens (simplified, no signature for MVP)
-public entry fun forge_tokens(
-    treasury_cap: &mut coin::TreasuryCap<DUNGEON>,
-    shards: u64,
-    ctx: &mut TxContext
-) {
-    assert!(shards <= 500, 0); // Reasonable limit
-    let coins = coin::mint(treasury_cap, shards, ctx);
-    transfer::public_transfer(coins, ctx.sender());
-}
-
-/// Buy Armor upgrade
-public entry fun buy_armor(
-    treasury: &mut Treasury,
-    payment: Coin<DUNGEON>,
-    ctx: &mut TxContext
-) {
-    // Check payment amount
-    assert!(coin::value(&payment) >= 300, 1);
-    
-    // Take payment
-    let paid = coin::into_balance(payment);
-    balance::join(&mut treasury.balance, paid);
-    
-    // Mint armor NFT
-    let armor = Armor {
-        id: object::new(ctx),
-        owner: ctx.sender(),
-        bonus_hp: 20,
-    };
-    
-    transfer::public_transfer(armor, ctx.sender());
-}
-
-/// Buy Boots upgrade
-public entry fun buy_boots(
-    treasury: &mut Treasury,
-    payment: Coin<DUNGEON>,
-    ctx: &mut TxContext
-) {
-    // Check payment amount
-    assert!(coin::value(&payment) >= 500, 2);
-    
-    // Take payment
-    let paid = coin::into_balance(payment);
-    balance::join(&mut treasury.balance, paid);
-    
-    // Mint boots NFT
-    let boots = Boots {
-        id: object::new(ctx),
-        owner: ctx.sender(),
-        speed_multiplier: 120,
-    };
-    
-    transfer::public_transfer(boots, ctx.sender());
-}
-
-/// Query functions for frontend
-public fun armor_bonus(armor: &Armor): u64 {
-    armor.bonus_hp
-}
-
-public fun boots_multiplier(boots: &Boots): u64 {
-    boots.speed_multiplier
-}
-```
-
-### React Integration with Sui SDK
+**Frontend Integration:**
 
 ```typescript
-import { SuiClient } from '@mysten/sui/client';
-import { Transaction } from '@mysten/sui/transactions';
-import { useWalletKit } from '@mysten/wallet-kit';
-
-// Initialize client
-const client = new SuiClient({ 
-    url: 'https://rpc-testnet.onelabs.cc:443' 
+// Query owned NFTs
+const nfts = await suiClient.getOwnedObjects({
+  owner: address,
+  filter: { StructType: `${PACKAGE_ID}::game::PowerRing` }
 });
 
-// Connect wallet
-const { currentAccount, signAndExecuteTransaction } = useWalletKit();
+// Calculate total bonuses
+const powerRingLevel = nfts.data[0]?.content.fields.level || 0;
+const damageBonus = Math.pow(1.2, powerRingLevel) - 1;
 
-// Query user's $DUNGEON balance
-async function getDungeonBalance(address: string) {
-    const coins = await client.getCoins({
-        owner: address,
-        coinType: `${PACKAGE_ID}::game::DUNGEON`
-    });
-    
-    return coins.data.reduce((sum, coin) => 
-        sum + BigInt(coin.balance), 0n
-    );
-}
-
-// Check if user owns upgrades
-async function getOwnedUpgrades(address: string) {
-    const armorObjects = await client.getOwnedObjects({
-        owner: address,
-        filter: { StructType: `${PACKAGE_ID}::game::Armor` }
-    });
-    
-    const bootsObjects = await client.getOwnedObjects({
-        owner: address,
-        filter: { StructType: `${PACKAGE_ID}::game::Boots` }
-    });
-    
-    return {
-        hasArmor: armorObjects.data.length > 0,
-        hasBoots: bootsObjects.data.length > 0
-    };
-}
-
-// Forge tokens
-async function forgeTokens(shards: number) {
-    const tx = new Transaction();
-    
-    tx.moveCall({
-        target: `${PACKAGE_ID}::game::forge_tokens`,
-        arguments: [
-            tx.object(TREASURY_CAP_ID), // TreasuryCap object
-            tx.pure(shards, 'u64')
-        ]
-    });
-    
-    await signAndExecuteTransaction({
-        transaction: tx,
-        options: {
-            showEffects: true,
-            showObjectChanges: true,
-        }
-    });
-}
-
-// Buy armor upgrade
-async function buyArmor() {
-    const tx = new Transaction();
-    
-    // Get user's DUNGEON coins
-    const coins = await client.getCoins({
-        owner: currentAccount.address,
-        coinType: `${PACKAGE_ID}::game::DUNGEON`
-    });
-    
-    // Merge coins if needed and split exact amount
-    const [paymentCoin] = tx.splitCoins(
-        tx.object(coins.data[0].coinObjectId),
-        [tx.pure(300, 'u64')]
-    );
-    
-    tx.moveCall({
-        target: `${PACKAGE_ID}::game::buy_armor`,
-        arguments: [
-            tx.object(TREASURY_ID),
-            paymentCoin
-        ]
-    });
-    
-    await signAndExecuteTransaction({
-        transaction: tx,
-        options: {
-            showEffects: true,
-            showObjectChanges: true,
-        }
-    });
-}
+// Apply to game config before starting run
+gameConfig.nftBonuses.damage = 1 + damageBonus;
 ```
 
 ---
 
-## 8. Entity-Component System (ECS)
+## 8. Security Model {#security-model}
 
-### Components (Pure Data Structures)
+### 8.1 Honor System (MVP)
 
-```javascript
-// In Phaser, these are just properties attached to GameObjects
-const Components = {
-  Position: { x, y, rotation },
-  Velocity: { x, y },
-  Sprite: { texture, tint, alpha },
-  Health: { current, max },
-  PhysicsBody: { width, height, speed },
-  PlayerControlled: {}, // Tag component
-  EnemyAI: { state: 'idle' | 'chasing', speed: 40 },
-  Shooter: { fireRate: 500, lastShotTime: 0, damage: 10 },
-  Projectile: { damage: 10, lifespan: 2000, firedAt: Date.now() },
-  DamageOnCollision: { damage: 10, damageType: 'touch' },
-  Collectible: { type: 'shard', value: 1 },
-  LootDrop: { dropType: 'shard', dropChance: 1.0 }
-};
-```
+**Current Approach:** For the hackathon MVP, we are implementing an **honor system** without backend signature verification.
 
-### Entity Compositions (Prefabs)
+**What This Means:**
+- The Move module's `forge_tokens` function accepts shard amounts without cryptographic proof
+- Players could theoretically call the function directly from their wallet with any amount
+- The `MAX_SHARDS_PER_RUN` check (500-1000) is enforced in the Move module as a basic sanity check
+- The token has no external value, limiting exploit incentive
 
-**Player Entity:**
-- Components: `Position`, `Velocity`, `Sprite {texture:'player'}`, `Health {current:100, max:100}`, `PhysicsBody`, `PlayerControlled`, `Shooter`
-- Modified by: `hasArmor` upgrade (Health.max = 120), `hasBoots` upgrade (PhysicsBody.speed *= 1.2)
+**Why Honor System:**
+- **Time Constraint:** Hackathon deadline prioritizes demonstrating core gameplay loop over anti-cheat
+- **Focus:** We want to showcase blockchain integration and game mechanics, not security infrastructure
+- **Scope:** Backend signature service is scaffolded but not connected
+- **Risk Mitigation:** Token is internal-only (no DEX listing during demo)
 
-**Slime Entity (Enemy):**
-- Components: `Position`, `Velocity`, `Sprite {texture:'slime'}`, `Health {current:30, max:30}`, `PhysicsBody`, `EnemyAI {speed:40}`, `DamageOnCollision {damage:10}`, `LootDrop {dropType:'shard'}`
+**Judges Acknowledgment:**
+> "In production, we would implement backend signature verification using ECDSA secp256k1 to prevent shard inflation exploits. The forge system would require a backend-signed message proving the player legitimately earned those shards. For this demo, we're focused on showcasing the gameplay loop and on-chain upgrade mechanics."
 
-**Magic Bolt Entity (Projectile):**
-- Components: `Position`, `Velocity`, `Sprite {texture:'bolt'}`, `PhysicsBody {width:8, height:8}`, `Projectile {damage:10, lifespan:2000}`
+### 8.2 Production Security Plan
 
-**Shard Entity (Collectible):**
-- Components: `Position`, `Sprite {texture:'shard'}`, `Collectible {type:'shard', value:1}`
-- Visual: Glowing particle effect + bounce animation
+When implementing full security post-hackathon:
 
-### Systems (Game Logic)
+**Backend Signature Service:**
+1. Receives `{ shards, timestamp, playerAddress }` from frontend after game over
+2. Validates shard amount is reasonable (≤500 based on run duration)
+3. Checks timestamp is recent (within 5 minutes)
+4. Prevents replay attacks (Redis cache of used signatures with TTL)
+5. Signs data with ECDSA secp256k1 private key
+6. Returns signature to frontend
 
-These run in Phaser's `update(time, delta)` loop:
+**Move Module Update:**
+- Add `forge_tokens_with_signature(shards, timestamp, signature)` function
+- Verify signature using `sui::ecdsa_k1::secp256k1_verify`
+- Check timestamp validity (not too old)
+- Mint tokens only if signature is valid
 
-**1. InputSystem** *(Acts on entities with `PlayerControlled`)*
-```javascript
-update(player) {
-  // Movement
-  const cursors = this.input.keyboard.createCursorKeys();
-  player.velocity.x = (cursors.right.isDown - cursors.left.isDown) * player.speed;
-  player.velocity.y = (cursors.down.isDown - cursors.up.isDown) * player.speed;
-  
-  // Aiming (mouse look)
-  const pointer = this.input.activePointer;
-  player.rotation = Phaser.Math.Angle.Between(player.x, player.y, pointer.worldX, pointer.worldY);
-  
-  // Shooting
-  if (pointer.isDown && time > player.lastShotTime + player.fireRate) {
-    this.createBullet(player.x, player.y, player.rotation);
-    player.lastShotTime = time;
-  }
-}
-```
-
-**2. AISystem** *(Acts on entities with `EnemyAI`)*
-```javascript
-update(enemies, player) {
-  enemies.forEach(enemy => {
-    // Simple chase behavior (no complex pathfinding)
-    const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, player.x, player.y);
-    enemy.velocity.x = Math.cos(angle) * enemy.aiSpeed;
-    enemy.velocity.y = Math.sin(angle) * enemy.aiSpeed;
-  });
-}
-```
-
-**3. MovementSystem** *(Acts on entities with `Position + Velocity`)*
-- Handled automatically by Phaser's Arcade Physics (`this.physics.add.existing(entity)`)
-
-**4. CollisionSystem** *(Using Phaser's collision detection)*
-```javascript
-// Setup in create():
-this.physics.add.overlap(bullets, enemies, this.bulletHitEnemy, null, this);
-this.physics.add.overlap(player, enemies, this.enemyHitPlayer, null, this);
-this.physics.add.overlap(player, collectibles, this.collectItem, null, this);
-
-bulletHitEnemy(bullet, enemy) {
-  enemy.health -= bullet.damage;
-  bullet.destroy();
-  if (enemy.health <= 0) this.enemyDied(enemy);
-}
-
-enemyHitPlayer(player, enemy) {
-  player.health -= enemy.damage;
-  player.setTint(0xff0000); // Damage flash
-  this.time.delayedCall(100, () => player.clearTint());
-  if (player.health <= 0) this.gameOver();
-}
-
-collectItem(player, item) {
-  if (item.type === 'shard') {
-    this.shardCount++;
-    this.updateShardUI();
-  }
-  item.destroy();
-}
-```
-
-**5. HealthSystem** *(Acts on entities with `Health`)*
-```javascript
-enemyDied(enemy) {
-  // Drop loot
-  if (enemy.lootDrop && Math.random() < enemy.lootDrop.chance) {
-    this.createCollectible(enemy.x, enemy.y, enemy.lootDrop.type);
-  }
-  
-  // Destroy enemy
-  enemy.destroy();
-}
-```
-
-**6. ProjectileSystem** *(Acts on entities with `Projectile`)*
-```javascript
-update(projectiles, time) {
-  projectiles.forEach(proj => {
-    if (time - proj.firedAt > proj.lifespan) {
-      proj.destroy();
-    }
-  });
-}
-```
-
-**7. RenderSystem** *(Handled by Phaser automatically)*
+**Additional Security Measures:**
+- Rate limiting on backend (10 requests/minute per IP)
+- Server-side anti-cheat heuristics (sudden shard spikes, impossible run durations)
+- On-chain analytics (flag accounts with abnormal forge patterns)
+- Admin dashboard for manual review of suspicious activity
 
 ---
 
-## 9. Wave System
+## 9. Success Criteria {#success-criteria}
 
-**Simple Wave Spawner:**
-```javascript
-class GameScene extends Phaser.Scene {
-  create() {
-    this.currentWave = 0;
-    this.enemiesAlive = 0;
-    this.startNextWave();
-  }
-  
-  startNextWave() {
-    this.currentWave++;
-    const enemyCount = 5 + (this.currentWave * 2); // 7, 9, 11, 13...
-    
-    for (let i = 0; i < enemyCount; i++) {
-      // Spawn at random position around room edges
-      const edge = Phaser.Math.Between(0, 3); // 0=top, 1=right, 2=bottom, 3=left
-      const pos = this.getSpawnPosition(edge);
-      this.createSlime(pos.x, pos.y);
-      this.enemiesAlive++;
-    }
-  }
-  
-  enemyDied(enemy) {
-    this.enemiesAlive--;
-    // ... loot drop logic
-    
-    // Start next wave when all enemies dead
-    if (this.enemiesAlive === 0) {
-      this.time.delayedCall(2000, () => this.startNextWave());
-    }
-  }
-}
-```
+### 9.1 MVP Complete Checklist
 
----
+#### Core Gameplay
+- [ ] 3 classes playable with distinct feels (Warrior, Mage, Rogue)
+- [ ] 6 weapons functional (3 starters, 2 unlockables, 1 endgame)
+- [ ] 3 enemy types spawn and scale correctly (Slime, Archer, Tank)
+- [ ] Class skills work on cooldown (Dash, Nova, Barrier)
+- [ ] Infinite world with smooth scrolling camera
+- [ ] Runs last 10-25 minutes before inevitable death
+- [ ] Shard earning scales appropriately (200-600 per run)
+- [ ] Power-ups drop and apply temporary buffs
+- [ ] Visual feedback (health bar, skill cooldowns, power-up timers)
 
-## 10. Failure States & Edge Cases
+#### Meta-Progression
+- [ ] Forge system converts Shards → $SLAY
+- [ ] 5 NFT types purchasable and upgradeable (L1-L5)
+- [ ] NFT upgrades apply exponentially in-game
+- [ ] Flamethrower and Celestial Cannon purchasable
+- [ ] Consumables shop works (Shard-based pre-run buffs)
+- [ ] Full loop tested 10+ times without crashes
 
-| Scenario | Handling |
-| :--- | :--- |
-| **Wallet not connected** | Disable "Start Run" button. Show "Connect Wallet" prompt. |
-| **Transaction fails during Forge** | Show error message: "Transaction failed. Your Shards are safe." Keep `pendingShards` state intact so user can retry. |
-| **User closes game mid-run** | Shards are lost (not saved). This is acceptable for MVP. |
-| **Backend signature server is down** | Fallback: Disable Forge button, show "Service temporarily unavailable." OR use honor system (see Section 5). |
-| **Gas costs too high** | For demo: Use testnet with faucet. For production: Batch multiple forges or use sponsored transactions. |
-| **User already owns upgrade** | Query owned objects first, disable purchase button if upgrade object exists. Move module would revert anyway. |
-| **Insufficient $DUNGEON coins** | Check balance before transaction, show clear error message. |
-| **Multiple coin objects** | SDK automatically handles coin merging via `tx.splitCoins()` in PTB. |
+#### Feel & Balance
+- [ ] Classes feel meaningfully different (not just stat tweaks)
+- [ ] Skills are satisfying and impactful to use
+- [ ] Power-ups create exciting decision moments
+- [ ] Early game is tense, late game is chaotic power fantasy
+- [ ] NFT upgrades feel rewarding (+50-150% power jumps)
+- [ ] Enemies scale to match player power (death inevitable ~20-25 min)
+- [ ] First NFT achievable in 1-2 runs (~30 minutes playtime)
 
----
+#### Technical
+- [ ] No crashes after 30 minutes of continuous play
+- [ ] Smooth 60 FPS with 200+ enemies on screen
+- [ ] Object pooling prevents memory leaks
+- [ ] Wallet transactions succeed consistently
+- [ ] NFT queries complete in <2 seconds
+- [ ] Game state syncs correctly with blockchain
 
-## 11. Reduced Scope Backup Plan
+### 9.2 Demo Day Success
 
-If you're behind schedule **48 hours before deadline**, cut in this order:
+**3-Minute Demo Flow:**
 
-**Phase 1 Cuts (Keep Core Loop):**
-- ~~Visual feedback~~ -> Just flash sprite tint, no particles
-- ~~Wave system~~ -> Enemies spawn continuously, game ends at timer or HP=0
-- ~~Backend signature~~ -> Use honor system, acknowledge to judges
+1. **Hook (30 seconds)**
+   - "Blockchain games are slow and clunky. Proof O' Slay is different—Vampire Survivors gameplay with on-chain progression."
+   - Show hub screen with wallet connected
 
-**Phase 2 Cuts (Minimum Viable Demo):**
-- ~~Second upgrade (Boots)~~ -> Ship with only Armor upgrade
-- ~~EnemyAI~~ -> Enemies move in straight lines or random walks
-- ~~React UI polish~~ -> Minimal Tailwind styling
+2. **Gameplay (60 seconds)**
+   - Select Mage class
+   - Play 30 seconds—show chaos, skills, power-ups
+   - Die intentionally at ~1 minute mark
+   - Show 250 shards earned
 
-**Nuclear Option (24 hours before deadline):**
-- ~~On-chain upgrades~~ -> Store upgrades in localStorage, fake the blockchain calls with mock data for the demo
+3. **Blockchain Integration (60 seconds)**
+   - Forge 250 Shards → 250 $SLAY (show wallet transaction)
+   - Purchase Power Ring Level 1 (300 $SLAY)
+   - Start new run, demonstrate +20% damage increase immediately
 
----
+4. **Technical Deep Dive (30 seconds)**
+   - "5 upgradeable NFTs, each with 5 levels, exponential scaling"
+   - "Power Ring Level 5 gives +149% damage—that's the power fantasy"
+   - "Vampire Survivors gameplay, but your build lives in your wallet forever"
 
-## 12. Future Expansion Examples
-
-### New Enemy: Archer
-- **Components:** `Position`, `Velocity`, `Sprite`, `Health`, `PhysicsBody`, `EnemyAI {state:'kiting'}`, `Shooter {bulletPrefab:'arrow'}`, `LootDrop`
-- **New Systems Needed:** None. AISystem gets a new behavior: "if player too close, move away; else shoot."
-- **Modularity Proof:** Reuses 90% of existing code.
-
-### New Upgrade: Triple Shot
-- **On-Chain:** Add new `TripleShot` struct as owned object
-- **Move Module:** 
-  ```move
-  public struct TripleShot has key, store {
-      id: UID,
-      owner: address,
-  }
-  
-  public entry fun buy_triple_shot(
-      treasury: &mut Treasury,
-      payment: Coin<DUNGEON>,
-      ctx: &mut TxContext
-  ) {
-      assert!(coin::value(&payment) >= 800, 3);
-      let paid = coin::into_balance(payment);
-      balance::join(&mut treasury.balance, paid);
-      
-      let triple_shot = TripleShot {
-          id: object::new(ctx),
-          owner: ctx.sender(),
-      };
-      transfer::public_transfer(triple_shot, ctx.sender());
-  }
-  ```
-- **In Game:** Modify `ShootingSystem`: 
-  ```javascript
-  if (player.hasTripleShot) {
-    this.createBullet(x, y, angle - 0.2);
-    this.createBullet(x, y, angle);
-    this.createBullet(x, y, angle + 0.2);
-  }
-  ```
-
-### New Class: Warrior
-- **Components:** Replace `Shooter` with `MeleeWeapon {damage:15, range:30, cooldown:800}`
-- **New System:** `MeleeSystem` creates a damage arc on click
-- **Modularity Proof:** Same entity, different components
+**Fallback Plan:**
+- Pre-recorded gameplay video if live demo fails
+- Testnet deployed contracts with visible transactions in explorer
+- Screenshots of key moments (class selection, forge, upgrade, buffed gameplay)
 
 ---
 
-## 13. Technical Stack Summary
+## 10. Demo Strategy {#demo-strategy}
 
-| Layer | Technology | Purpose |
-| :--- | :--- | :--- |
-| **Game Engine** | Phaser 3 | Core gameplay loop, rendering, physics |
-| **Frontend UI** | React + Vite | Hub screen, wallet connection, state management |
-| **Web3** | @mysten/sui (TypeScript SDK) | Smart contract interactions |
-| **Wallet** | Sui Wallet Standard | User authentication & transactions |
-| **Blockchain** | OneChain Testnet (Sui-based) | Move modules + owned object storage |
-| **Smart Contracts** | Move Language | Game logic, token minting, upgrade NFTs |
-| **Backend** | Node.js + Express (Optional) | Signature service for forge verification |
-| **Deployment** | Vercel/Netlify (Frontend) + Render (Backend) | Demo hosting |
+### 10.1 Pitch Structure
 
----
-
-## 14. Development Timeline (5-Day Hackathon)
-
-| Day | Focus | Deliverables |
-| :--- | :--- | :--- |
-| **Day 1** | Move Basics + Deploy | Study Move syntax, copy tutorial `Sword` module, adapt to `Armor`, deploy to testnet, test minting via CLI. |
-| **Day 2** | Phaser Game | Build player, enemy, shooting, health, wave spawner. Playable game loop with placeholder assets. |
-| **Day 3** | React + Sui SDK | Wallet connection, query owned objects (upgrades), display balances, basic Hub UI. |
-| **Day 4** | Integration | Connect Phaser ↔ React ↔ Blockchain. Forge system working end-to-end. Buy armor via PTB. |
-| **Day 5** | Polish & Debug | Visual feedback, UI polish, test full loop multiple times, fix object ownership bugs, practice demo. |
-
----
-
-## 15. Move Development Notes
-
-### Building and Testing
-
-```bash
-# Initialize new Move package
-one move new dungeon_forge
-
-# Build the package
-one move build
-
-# Run tests
-one move test
-
-# Publish to testnet
-one client publish --gas-budget 100000000
-```
-
-### Key Move Concepts for Team
-
-1. **Everything is an Object:** Tokens, upgrades, even the treasury. Each has a unique `UID`.
-2. **Owned vs Shared:** 
-   - Upgrades are **owned** by player (transferred to their address)
-   - Treasury is **shared** (accessible by all, but controlled by module logic)
-3. **No Balances:** Player doesn't have a "balance" number. They own multiple `Coin<DUNGEON>` objects. Sum them for display.
-4. **PTBs are Atomic:** All transaction commands in a PTB succeed or fail together.
-5. **Object Versioning:** Each object has a version number. Using stale versions causes transaction failure.
-
-### Testing Strategy
-
-```move
-#[test]
-fun test_forge_and_buy_armor() {
-    use sui::test_scenario;
-    
-    let admin = @0xAD;
-    let player = @0xCAFE;
-    
-    let mut scenario = test_scenario::begin(admin);
-    {
-        init(GAME {}, scenario.ctx());
-    };
-    
-    // Player forges tokens
-    scenario.next_tx(player);
-    {
-        let mut cap = scenario.take_from_sender<TreasuryCap<DUNGEON>>();
-        forge_tokens(&mut cap, 500, scenario.ctx());
-        scenario.return_to_sender(cap);
-    };
-    
-    // Player buys armor
-    scenario.next_tx(player);
-    {
-        let payment = scenario.take_from_sender<Coin<DUNGEON>>();
-        let mut treasury = scenario.take_shared<Treasury>();
-        buy_armor(&mut treasury, payment, scenario.ctx());
-        test_scenario::return_shared(treasury);
-    };
-    
-    // Verify player owns armor
-    scenario.next_tx(player);
-    {
-        let armor = scenario.take_from_sender<Armor>();
-        assert!(armor_bonus(&armor) == 20, 0);
-        scenario.return_to_sender(armor);
-    };
-    
-    scenario.end();
-}
-```
-
----
-
-## 16. Blockchain-Specific Edge Cases
-
-| Scenario | Handling |
-| :--- | :--- |
-| **Player has 0 $DUNGEON coins** | Query returns empty array. Display "0 DUNGEON". Disable upgrade buttons. |
-| **Player has multiple small coin objects** | PTB automatically merges via `tx.splitCoins(tx.object(coinId), [amount])`. SDK handles this. |
-| **Transaction pending** | Show loading spinner. Poll `client.waitForTransaction(digest)` for confirmation. |
-| **RPC node down** | Catch network errors, show "Network unavailable" message, provide retry button. |
-| **Testnet reset** | All objects lost. Document testnet address in `.env` for quick redeployment. |
-| **Gas estimation fails** | Set conservative fixed gas budget (100M MIST). Monitor actual usage and adjust. |
-| **Object locked (equivocation)** | Rare but possible. Wait until end of epoch (~24hrs). For demo, have backup wallet. |
-
----
-
-## 17. Success Criteria (MVP Complete)
-
-- [ ] User can connect Sui-compatible wallet to testnet
-- [ ] User can play Phaser game and see their upgrades applied (read from owned objects)
-- [ ] User earns Shards by killing enemies
-- [ ] User can Forge Shards into $DUNGEON coins (with optional signature verification)
-- [ ] User can buy upgrades with $DUNGEON (via PTB)
-- [ ] Upgrades persist as owned objects and affect next run
-- [ ] Game loop feels addictive (can play 3+ runs without boredom)
-- [ ] Balance display correctly sums all owned $DUNGEON coin objects
-
-## 18. Sui-Specific Best Practices
-
-### Gas Optimization
-
-**Batch Operations in PTBs:**
-```typescript
-// GOOD: Single PTB with multiple operations
-const tx = new Transaction();
-const [coin1] = tx.splitCoins(tx.gas, [tx.pure(100)]);
-const [coin2] = tx.splitCoins(tx.gas, [tx.pure(200)]);
-tx.transferObjects([coin1], tx.pure(address1));
-tx.transferObjects([coin2], tx.pure(address2));
-// One transaction = one gas payment
-
-// BAD: Multiple separate transactions
-await forgeTokens(100); // Gas payment 1
-await forgeTokens(200); // Gas payment 2
-```
-
-**Coin Management:**
-```typescript
-// Query all coins and merge if needed
-async function preparePayment(amount: bigint) {
-    const coins = await client.getCoins({
-        owner: currentAccount.address,
-        coinType: `${PACKAGE_ID}::game::DUNGEON`
-    });
-    
-    const total = coins.data.reduce((sum, c) => 
-        sum + BigInt(c.balance), 0n
-    );
-    
-    if (total < amount) {
-        throw new Error('Insufficient balance');
-    }
-    
-    // PTB will handle merging automatically
-    return coins.data[0].coinObjectId;
-}
-```
-
-### Error Handling
-
-```typescript
-async function executeBuyArmor() {
-    try {
-        const tx = new Transaction();
-        // ... build transaction
-        
-        const result = await signAndExecuteTransaction({
-            transaction: tx,
-            options: {
-                showEffects: true,
-                showObjectChanges: true,
-            }
-        });
-        
-        // Check execution status
-        if (result.effects?.status?.status === 'success') {
-            // Find created Armor object
-            const armorObject = result.objectChanges?.find(
-                change => change.type === 'created' && 
-                change.objectType.includes('::Armor')
-            );
-            
-            return { success: true, armorId: armorObject?.objectId };
-        } else {
-            throw new Error(result.effects?.status?.error || 'Transaction failed');
-        }
-        
-    } catch (error) {
-        if (error.message.includes('InsufficientGas')) {
-            return { success: false, error: 'Not enough gas' };
-        } else if (error.message.includes('InsufficientCoinBalance')) {
-            return { success: false, error: 'Not enough DUNGEON tokens' };
-        } else {
-            console.error('Transaction error:', error);
-            return { success: false, error: 'Transaction failed' };
-        }
-    }
-}
-```
-
-### Object Caching Strategy
-
-```typescript
-// Cache owned objects to reduce RPC calls
-class UpgradeCache {
-    private cache: Map<string, { data: any, timestamp: number }> = new Map();
-    private TTL = 10000; // 10 seconds
-    
-    async getUpgrades(address: string, forceRefresh = false) {
-        const cached = this.cache.get(address);
-        const now = Date.now();
-        
-        if (!forceRefresh && cached && (now - cached.timestamp) < this.TTL) {
-            return cached.data;
-        }
-        
-        const upgrades = await fetchUpgradesFromChain(address);
-        this.cache.set(address, { data: upgrades, timestamp: now });
-        return upgrades;
-    }
-    
-    invalidate(address: string) {
-        this.cache.delete(address);
-    }
-}
-```
-
----
-
-## 19. Demo Script (3-Minute Pitch)
-
-**Minute 1: Problem & Hook**
-> "Web3 games promise true asset ownership, but onboarding is painful. Gas fees, wallet setup, and complex UIs scare away casual gamers. DungeonForge solves this with a hybrid model: play for free off-chain, claim rewards on-chain."
+**Minute 1: Problem & Solution**
+> "Blockchain games promise asset ownership, but they're slow turn-based experiences with clunky UX. Players want fast-paced action, not waiting for transactions between every move.
+> 
+> Proof O' Slay solves this: **fast off-chain gameplay** (Vampire Survivors-style auto-shooter) with **meaningful on-chain progression** (upgradeable NFTs). Play for 15 minutes, earn Shards, forge them into tokens, buy NFTs that make you permanently stronger."
 
 **Minute 2: Live Demo**
-1. Connect wallet (5 seconds)
-2. Show empty inventory: "No upgrades yet"
-3. Play game: Kill 3-4 slimes, collect shards (20 seconds)
-4. Die intentionally: "Collected 50 shards"
-5. Click "Forge" → Show wallet signature prompt (10 seconds)
-6. Transaction confirms: "$DUNGEON balance: 50"
-7. Accumulate more runs quickly: "Now at 320 tokens"
-8. Buy Armor: Show PTB in wallet (10 seconds)
-9. Transaction confirms: Show Armor object in inventory
-10. Start new run: "Watch - my HP is now 120 instead of 100"
-11. Survive longer with upgraded character
+1. Show class selection (3 distinct classes)
+2. Play 30 seconds—chaos, skill usage, power-ups
+3. Die, show 300 Shards earned
+4. Forge Shards → $SLAY (wallet transaction)
+5. Buy Power Ring Level 1
+6. Start new run—show immediate +20% damage buff
 
-**Minute 3: Technical Deep Dive**
-> "Built on OneChain using Move smart contracts. Upgrades are owned objects—real NFTs, not database entries. The player literally owns that Armor. If we rug-pull, they keep it. That's true asset ownership."
-
-> "Under the hood: Programmable Transaction Blocks let us atomically split coins, call the buy function, and transfer the NFT—all in one transaction. Gas-efficient, secure, and composable with other OneChain dApps."
+**Minute 3: Technical Innovation**
+> "Under the hood:
+> - **Move smart contracts** with upgradeable NFTs (level 1-5 progression)
+> - **Exponential scaling**: Power Ring goes from +20% at L1 to +149% at L5
+> - **Component-based ECS**: Add new weapons/classes by updating config files
+> - **Honor system for MVP**, but production would use backend signature verification
+> 
+> We're not just putting a game on-chain for the sake of it—we're proving that blockchain and fast gameplay can coexist."
 
 **Call to Action:**
-> "Try it yourself at [demo-url]. We're launching on mainnet next month. Early adopters get exclusive Genesis Sword NFTs."
+> "Try the demo yourself at [URL]. We're launching on mainnet next month, and early testers will receive Genesis Class NFTs. Questions?"
+
+### 10.2 Common Judge Questions
+
+**Q: "Why not just use a traditional database?"**
+> A: "Two reasons: (1) True ownership—players can trade their Level 5 Power Ring to other players. (2) Composability—future games could recognize these NFTs and grant bonuses. Our NFTs aren't just stats, they're portable assets."
+
+**Q: "How do you prevent cheating without backend verification?"**
+> A: "For the MVP, we accept the honor system since the token has no external value. Post-hackathon, we'd add ECDSA signature verification where the backend signs `{ shards, timestamp }` and Move verifies it. We have this architecture designed but de-scoped for time."
+
+**Q: "What's the business model?"**
+> A: "Three paths: (1) Cosmetic NFTs (skins, effects), (2) Secondary market royalties (5% on NFT trades), (3) Tournament entry fees (prize pools in $SLAY). The core game stays free-to-play with no pay-to-win."
+
+**Q: "How does this compare to Axie Infinity or Gods Unchained?"**
+> A: "Those are turn-based strategy games where blockchain slows down gameplay. We separate concerns: fast arcade action off-chain, persistence on-chain. Players get Vampire Survivors-quality combat with the ownership benefits of Web3."
+
+**Q: "What if OneLabs.cc goes down?"**
+> A: "Smart contracts are deployed on-chain—they're censorship-resistant and always accessible. The game client is open-source and can be hosted anywhere. Even if our servers disappear, players still own their NFTs and can run the game locally."
 
 ---
 
-## 20. Post-Hackathon Roadmap
+## 11. Post-MVP Roadmap {#post-mvp-roadmap}
 
-### Week 1-2: Production Hardening
-- [ ] Implement backend signature verification
-- [ ] Add rate limiting to forge endpoint
-- [ ] Deploy to mainnet with real tokenomics
-- [ ] Professional art assets (commission or AI-generate)
-- [ ] Sound design and music
+### Phase 5: Content Expansion (Months 2-3)
+- [ ] Add 3 more character classes (Necromancer, Paladin, Ranger)
+- [ ] Add 5 more weapons (Laser Rifle, Lightning Rod, etc.)
+- [ ] Add 2 more enemy types (Mage, Demon)
+- [ ] Procedural dungeon rooms (Binding of Isaac style)
+- [ ] Boss encounters every 5 minutes (unique mechanics)
+- [ ] Pet system (NFT companions that assist in combat)
 
-### Week 3-4: Content Expansion
-- [ ] 3 new enemy types (Archer, Tank, Mage)
-- [ ] 5 additional upgrades (Shield, Dash, Lifesteal, Crit Chance, AOE)
-- [ ] Boss enemy at wave 10
-- [ ] Multiple room layouts
-- [ ] Procedural dungeon generation (stretch)
+### Phase 6: Social Features (Month 3-4)
+- [ ] Global leaderboard (longest survival time)
+- [ ] Daily challenges with exclusive rewards
+- [ ] Guild system (shared treasury, cooperative upgrades)
+- [ ] Spectator mode (watch top players' runs)
+- [ ] Replay system (share your best runs)
 
-### Month 2: Monetization & Growth
-- [ ] Seasonal battle pass (off-chain, burns $DUNGEON for rewards)
-- [ ] Cosmetic NFTs (skins, pets, weapon visuals)
-- [ ] Guild system (shared objects for clan treasury)
-- [ ] Leaderboard with weekly prizes
-- [ ] Referral program (airdrop tokens to both parties)
+### Phase 7: Economy & Monetization (Month 4-6)
+- [ ] Cosmetic NFTs (character skins, weapon skins, visual effects)
+- [ ] Secondary marketplace (in-game trading with 5% royalty)
+- [ ] Seasonal battle pass (cosmetic rewards)
+- [ ] Tournament mode (entry fee, prize pool distribution)
+- [ ] DEX listing for $SLAY (if community desires)
 
-### Month 3: Advanced Features
-- [ ] PvP arena mode
-- [ ] Tournament system with entry fees
-- [ ] Sponsored transactions for new users (first 3 runs free)
-- [ ] Cross-chain bridge (if needed)
-- [ ] Mobile app (React Native wrapper)
-
----
-
-## 21. Team Roles & Responsibilities
-
-| Role | Responsibilities | Time Allocation |
-| :--- | :--- | :--- |
-| **Move Developer** | Write smart contracts, test modules, handle deployments | 40% |
-| **Frontend Developer** | React UI, Sui SDK integration, wallet connection | 30% |
-| **Game Developer** | Phaser logic, ECS implementation, gameplay tuning | 20% |
-| **Designer** | UI/UX mockups, sprite assets, animation | 5% |
-| **DevOps** | Backend setup, RPC monitoring, deployment | 5% |
-
-**Note:** For a 2-person team, expect role overlap. Prioritize Move + Frontend first, then Phaser.
+### Phase 8: Advanced Features (Month 6+)
+- [ ] Weapon combo system (merge 2 weapons for hybrid attacks)
+- [ ] Prestige system (reset progress for permanent account-wide bonuses)
+- [ ] PvP arena mode (1v1 or battle royale)
+- [ ] Mobile port (React Native + touch controls)
+- [ ] Cross-chain bridges (expand to other L1s)
 
 ---
 
-## 22. Common Pitfalls to Avoid
+## 12. Appendix: Data-Driven Modularity {#appendix}
 
-### Move Development
+### Adding New Weapons (Example)
 
-**❌ Trying to transfer objects without `store` ability**
+**1. Add to GameConfig.ts:**
+```typescript
+WEAPONS.LASER_RIFLE = {
+  name: 'Laser Rifle',
+  fireRate: 100, // ms between shots
+  damage: 3,
+  bulletSpeed: 800,
+  bulletLifespan: 1500,
+  specialEffect: 'pierce_infinite', // pierces all enemies
+  acquireMethod: 'purchase',
+  cost: 5000 // $SLAY
+}
+```
+
+**2. Create projectile entity (if needed):**
+- Add to `BulletEntity.ts` factory
+- Visual: Different sprite/color
+- Behavior: Handled by specialEffect flag
+
+**3. Wire into WeaponSystem:**
+- System reads config automatically
+- No code changes needed if using existing special effects
+
+**Result:** New weapon available in-game by updating one config file.
+
+### Adding New Enemies (Example)
+
+**1. Add to GameConfig.ts:**
+```typescript
+ENEMY_CONFIG.NECROMANCER = {
+  name: 'Necromancer',
+  health: 50,
+  speed: 35,
+  damage: 20,
+  behavior: 'summon_minions', // new behavior type
+  color: 0x8b008b,
+  shardDrop: 2,
+  powerUpChance: 0.05
+}
+```
+
+**2. Implement new behavior in AISystem.ts:**
+```typescript
+case 'summon_minions':
+  if (Math.random() < 0.01) { // 1% chance per frame
+    spawnSlime(enemy.x + 50, enemy.y);
+  }
+  // Also implement basic chase
+  moveTowards(enemy, player);
+  break;
+```
+
+**3. Create entity factory:**
+- `NecromancerEntity.ts` with component composition
+
+**Result:** New enemy type with unique mechanics.
+
+### Adding New NFT Types (Example)
+
+**Move Contract:**
 ```move
-// WRONG: Missing 'store'
-public struct Armor has key {
+public struct VampireCloak has key, store {
     id: UID,
+    level: u8,
+    lifesteal_percent: u64, // 5% per level
 }
 
-// RIGHT: Needs 'store' to be transferable
-public struct Armor has key, store {
-    id: UID,
-}
+public entry fun buy_vampire_cloak(/* ... */) { /* ... */ }
+public entry fun upgrade_vampire_cloak(/* ... */) { /* ... */ }
 ```
 
-**❌ Not handling multiple coin objects**
+**Frontend Query:**
 ```typescript
-// WRONG: Assumes single coin
-const coin = coins.data[0];
-tx.moveCall({ arguments: [tx.object(coin.coinObjectId)] });
-
-// RIGHT: Let PTB merge coins
-const [payment] = tx.splitCoins(
-    tx.object(coins.data[0].coinObjectId),
-    [tx.pure(300)]
-);
-```
-
-**❌ Forgetting to return objects in tests**
-```move
-#[test]
-fun test_armor() {
-    let armor = scenario.take_from_sender<Armor>();
-    // Test logic...
-    // WRONG: Object not returned, test fails
-}
-
-// RIGHT:
-scenario.return_to_sender(armor);
-```
-
-### Frontend Integration
-
-**❌ Not handling wallet disconnect**
-```typescript
-// WRONG: Crashes when wallet disconnects
-const balance = await getDungeonBalance(currentAccount.address);
-
-// RIGHT: Guard against null
-const balance = currentAccount?.address 
-    ? await getDungeonBalance(currentAccount.address)
-    : 0n;
-```
-
-**❌ Not waiting for transaction confirmation**
-```typescript
-// WRONG: UI updates before chain confirms
-await forgeTokens(shards);
-setBalance(balance + shards); // Race condition!
-
-// RIGHT: Wait for effects
-const result = await forgeTokens(shards);
-await client.waitForTransaction({ digest: result.digest });
-const newBalance = await getDungeonBalance(address);
-setBalance(newBalance);
-```
-
-**❌ Hardcoding package IDs**
-```typescript
-// WRONG: Breaks on redeployment
-const PACKAGE_ID = '0x123...abc';
-
-// RIGHT: Use environment variables
-const PACKAGE_ID = import.meta.env.VITE_PACKAGE_ID;
-```
-
-### Game Design
-
-**❌ Making upgrades too expensive**
-```
-// WRONG: Players need 10+ runs to afford first upgrade
-Hero's Armor: 1000 $DUNGEON
-
-// RIGHT: ~3-4 runs for first upgrade
-Hero's Armor: 300 $DUNGEON
-```
-
-**❌ No difficulty curve**
-```javascript
-// WRONG: Every wave identical
-const enemyCount = 10;
-
-// RIGHT: Gradual increase
-const enemyCount = 5 + (this.currentWave * 2);
-```
-
----
-
-## 23. Environment Setup
-
-### Required Installations
-
-```bash
-# Install Rust (for Move compiler)
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# Install Sui CLI
-cargo install --locked --git https://github.com/one-chain-labs/onechain.git one_chain --features tracing
-mv ~/.cargo/bin/one_chain ~/.cargo/bin/one
-
-# Verify installation
-one --version
-
-# Initialize Sui wallet
-one client
-
-# Request testnet tokens
-one client faucet
-# OR via cURL:
-curl -X POST 'https://faucet-testnet.onelabs.cc/v1/gas' \
-  -H 'Content-Type: application/json' \
-  -d '{"FixedAmountRequest": {"recipient": "<YOUR_ADDRESS>"}}'
-```
-
-### Project Structure
-
-```
-dungeon-forge/
-├── contracts/              # Move package
-│   ├── Move.toml
-│   ├── sources/
-│   │   └── game.move
-│   └── tests/
-│       └── game_tests.move
-├── frontend/               # React app
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── Hub.tsx
-│   │   │   ├── Shop.tsx
-│   │   │   └── WalletConnect.tsx
-│   │   ├── game/          # Phaser game
-│   │   │   ├── scenes/
-│   │   │   │   ├── GameScene.js
-│   │   │   │   └── MenuScene.js
-│   │   │   └── config.js
-│   │   ├── lib/
-│   │   │   ├── suiClient.ts
-│   │   │   └── gameContract.ts
-│   │   └── App.tsx
-│   ├── package.json
-│   └── vite.config.ts
-├── backend/                # Optional signature service
-│   ├── src/
-│   │   ├── index.ts
-│   │   └── signer.ts
-│   └── package.json
-├── .env.example
-├── .gitignore
-└── README.md
-```
-
-### Environment Variables
-
-```bash
-# .env.example
-VITE_SUI_NETWORK=testnet
-VITE_PACKAGE_ID=0x...  # Fill after deployment
-VITE_TREASURY_CAP_ID=0x...
-VITE_TREASURY_ID=0x...
-VITE_BACKEND_URL=http://localhost:3001  # Optional
-
-# Backend
-BACKEND_PORT=3001
-SIGNER_PRIVATE_KEY=0x...  # Don't commit!
-ALLOWED_ORIGINS=http://localhost:5173
-```
-
----
-
-## 24. Deployment Checklist
-
-### Pre-Deploy
-
-- [ ] All Move tests passing: `one move test`
-- [ ] Frontend builds without errors: `npm run build`
-- [ ] Testnet tokens acquired for deployer address
-- [ ] Environment variables documented
-- [ ] Git repo clean (no sensitive keys committed)
-
-### Smart Contract Deployment
-
-```bash
-# Navigate to contracts directory
-cd contracts
-
-# Build package
-one move build
-
-# Publish to testnet
-one client publish --gas-budget 100000000
-
-# Save important IDs from output:
-# - Package ID
-# - TreasuryCap object ID
-# - Treasury shared object ID
-
-# Test a function via CLI
-one client call \
-  --package <PACKAGE_ID> \
-  --module game \
-  --function forge_tokens \
-  --args <TREASURY_CAP_ID> 100 \
-  --gas-budget 10000000
-```
-
-### Frontend Deployment
-
-```bash
-# Update .env with deployed contract IDs
-echo "VITE_PACKAGE_ID=<PACKAGE_ID>" > .env
-echo "VITE_TREASURY_CAP_ID=<CAP_ID>" >> .env
-echo "VITE_TREASURY_ID=<TREASURY_ID>" >> .env
-
-# Build production bundle
-npm run build
-
-# Deploy to Vercel
-vercel --prod
-
-# Or Netlify
-netlify deploy --prod
-```
-
-### Post-Deploy Verification
-
-- [ ] Connect wallet to production site
-- [ ] Verify upgrade objects query correctly
-- [ ] Execute a forge transaction
-- [ ] Purchase an upgrade
-- [ ] Play a run with the upgrade active
-- [ ] Check object ownership in Sui Explorer
-
----
-
-## 25. Monitoring & Analytics
-
-### On-Chain Metrics to Track
-
-```typescript
-interface GameMetrics {
-    // User metrics
-    totalPlayers: number;
-    dailyActiveUsers: number;
-    averageSessionLength: number;
-    
-    // Economic metrics
-    totalDungeonMinted: bigint;
-    totalDungeonBurned: bigint;  // Spent on upgrades
-    circulatingSupply: bigint;
-    
-    // Upgrade adoption
-    armorsPurchased: number;
-    bootsPurchased: number;
-    
-    // Game metrics
-    averageShardsPerRun: number;
-    averageRunsToFirstUpgrade: number;
-    retentionRate: number;  // % returning after 24hrs
-}
-
-// Query via Sui events
-async function getMetrics(): Promise<GameMetrics> {
-    const events = await client.queryEvents({
-        query: { 
-            MoveModule: {
-                package: PACKAGE_ID,
-                module: 'game'
-            }
-        }
-    });
-    
-    // Process events to extract metrics
-    return processEvents(events);
-}
-```
-
-### Custom Event Emission
-
-```move
-// Add to Move module
-use sui::event;
-
-public struct ArmorPurchased has copy, drop {
-    buyer: address,
-    armor_id: ID,
-    timestamp_ms: u64,
-}
-
-public struct TokensForged has copy, drop {
-    player: address,
-    amount: u64,
-    timestamp_ms: u64,
-}
-
-public entry fun buy_armor(...) {
-    // ... purchase logic
-    
-    event::emit(ArmorPurchased {
-        buyer: ctx.sender(),
-        armor_id: object::id(&armor),
-        timestamp_ms: ctx.epoch_timestamp_ms(),
-    });
-}
-```
-
-### Frontend Analytics
-
-```typescript
-// Simple event tracking
-function trackEvent(event: string, properties?: object) {
-    // For hackathon: Console log
-    console.log('[Analytics]', event, properties);
-    
-    // For production: Send to analytics service
-    // posthog.capture(event, properties);
-    // mixpanel.track(event, properties);
-}
-
-// Usage
-trackEvent('game_started', { hasArmor, hasBoots });
-trackEvent('game_over', { shards, waves, duration });
-trackEvent('upgrade_purchased', { upgrade: 'armor', cost: 300 });
-```
-
----
-
-## 26. Security Considerations
-
-### Smart Contract Security
-
-**Move's Built-in Safety:**
-- No reentrancy attacks (no cross-contract calls during execution)
-- No integer overflow (checked arithmetic by default)
-- No null pointers (Option type is explicit)
-- Resource safety (objects can't be duplicated or lost)
-
-**Still Need to Guard Against:**
-
-```move
-// Input validation
-public entry fun forge_tokens(shards: u64, ...) {
-    assert!(shards > 0, ERR_ZERO_AMOUNT);
-    assert!(shards <= 500, ERR_EXCESSIVE_AMOUNT);
-    // ...
-}
-
-// Access control
-public entry fun buy_armor(payment: Coin<DUNGEON>, ...) {
-    assert!(coin::value(&payment) >= 300, ERR_INSUFFICIENT_PAYMENT);
-    // Can't check ownership of 'payment' - Move's type system handles it
-}
-
-// Prevent double-spending (handled by Move's ownership model)
-// Once a coin is used in a transaction, its version increments
-// Trying to reuse it fails automatically
-```
-
-### Frontend Security
-
-```typescript
-// Validate user input
-function sanitizeShardAmount(input: string): number {
-    const amount = parseInt(input);
-    if (isNaN(amount) || amount < 0 || amount > 500) {
-        throw new Error('Invalid shard amount');
-    }
-    return amount;
-}
-
-// Prevent transaction spam
-const rateLimiter = new Map<string, number>();
-
-async function forgeWithRateLimit(shards: number) {
-    const now = Date.now();
-    const lastForge = rateLimiter.get(currentAccount.address) || 0;
-    
-    if (now - lastForge < 5000) {  // 5 second cooldown
-        throw new Error('Please wait before forging again');
-    }
-    
-    rateLimiter.set(currentAccount.address, now);
-    return await forgeTokens(shards);
-}
-```
-
-### Backend Security (if implemented)
-
-```typescript
-// Rate limiting
-import rateLimit from 'express-rate-limit';
-
-const signLimiter = rateLimit({
-    windowMs: 60 * 1000,  // 1 minute
-    max: 10,  // 10 requests per minute per IP
-    message: 'Too many signature requests'
+const cloaks = await client.getOwnedObjects({
+    owner: address,
+    filter: { StructType: `${PACKAGE_ID}::game::VampireCloak` }
 });
 
-app.post('/api/sign-forge', signLimiter, async (req, res) => {
-    const { shards, timestamp, playerAddress } = req.body;
-    
-    // Validate inputs
-    if (!shards || !timestamp || !playerAddress) {
-        return res.status(400).json({ error: 'Missing parameters' });
-    }
-    
-    if (shards > 500) {
-        return res.status(400).json({ error: 'Excessive shard amount' });
-    }
-    
-    // Check timestamp is recent (within 5 minutes)
-    const now = Date.now();
-    if (Math.abs(now - timestamp) > 300000) {
-        return res.status(400).json({ error: 'Stale timestamp' });
-    }
-    
-    // Prevent replay attacks
-    const requestId = `${playerAddress}-${timestamp}`;
-    if (await redis.get(requestId)) {
-        return res.status(400).json({ error: 'Duplicate request' });
-    }
-    await redis.setex(requestId, 600, '1');  // 10 min TTL
-    
-    // Sign the data
-    const signature = await signMessage(shards, timestamp, playerAddress);
-    res.json({ signature });
-});
-```
-
----
-
-## 27. Troubleshooting Guide
-
-### Common Move Errors
-
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `InsufficientCoinBalance` | Not enough tokens to pay | Check balance before transaction |
-| `ObjectNotFound` | Object ID doesn't exist | Verify object wasn't consumed in previous tx |
-| `InvalidObjectVersion` | Using stale object version | Re-query object before transaction |
-| `MoveAbort(code)` | Assert failed in Move | Check error code in module definition |
-| `InsufficientGas` | Gas budget too low | Increase gas budget or optimize PTB |
-
-### Common Frontend Errors
-
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `Wallet not connected` | User didn't connect | Show connection prompt, disable actions |
-| `User rejected transaction` | User cancelled in wallet | Show "Transaction cancelled" message |
-| `Network request failed` | RPC node down | Retry with exponential backoff |
-| `Object already used` | Equivocation/double-spend attempt | Wait for transaction confirmation before next |
-
-### Debugging Tools
-
-```typescript
-// Enable verbose transaction logging
-const result = await signAndExecuteTransaction({
-    transaction: tx,
-    options: {
-        showEffects: true,
-        showObjectChanges: true,
-        showEvents: true,
-        showInput: true,
-        showRawInput: true,
-    }
-});
-
-console.log('Transaction result:', JSON.stringify(result, null, 2));
-
-// Inspect objects in Sui Explorer
-const explorerUrl = `https://explorer.onelabs.cc/object/${objectId}?network=testnet`;
-console.log('View in explorer:', explorerUrl);
-
-// Dry run transaction before signing
-const dryRunResult = await client.dryRunTransactionBlock({
-    transactionBlock: await tx.build({ client })
-});
-
-if (dryRunResult.effects.status.status !== 'success') {
-    console.error('Dry run failed:', dryRunResult.effects.status.error);
+if (cloaks.data.length > 0) {
+    const level = cloaks.data[0].content.fields.level;
+    const lifesteal = 0.05 * level;
+    gameConfig.nftBonuses.lifesteal = lifesteal;
 }
 ```
 
----
-
-## 28. Success Metrics & KPIs
-
-### Hackathon Judging Criteria
-
-| Criteria | Weight | How We Excel |
-|----------|--------|--------------|
-| **Technical Innovation** | 30% | Move smart contracts + object-based architecture + PTBs |
-| **User Experience** | 25% | Seamless off-chain gameplay, minimal wallet interactions |
-| **Completeness** | 20% | Full game loop working, smart contracts deployed |
-| **Presentation** | 15% | Live demo, clear explanation of tech stack |
-| **Business Viability** | 10% | Token economics, roadmap, retention mechanisms |
-
-### Demo Day Goals
-
-- [ ] Zero crashes during 3-minute demo
-- [ ] Complete full gameplay loop in under 2 minutes
-- [ ] Show at least one upgrade purchase on-chain
-- [ ] Explain technical architecture clearly
-- [ ] Have judges test the game themselves
-
-### Post-Launch Targets (Month 1)
-
-- 500+ unique wallet connections
-- 10,000+ games played
-- 2,000+ upgrades minted
-- 30% player retention (return after 24 hours)
-- $50k+ in $DUNGEON trading volume (if DEX listed)
+**Result:** New upgrade path without changing core game systems.
 
 ---
 
-## 29. Acknowledgments & Resources
+## 13. Final Notes
 
-### OneChain Documentation
-- [Developer Documentation](https://docs.onelabs.cc/DevelopmentDocument)
-- [Move Tutorial](https://docs.onelabs.cc/DevelopmentDocument#your-first-dapp)
-- [RPC Endpoints](https://rpc-testnet.onelabs.cc:443)
+**Development Timeline:** 3-4 weeks for full MVP (all phases 1-4)
 
-### External Resources
-- [Sui Move by Example](https://examples.sui.io/)
-- [Phaser 3 Documentation](https://photonstorm.github.io/phaser3-docs/)
-- [React + TypeScript Guide](https://react-typescript-cheatsheet.netlify.app/)
+**Team Requirements:**
+- 1 Move developer (smart contracts)
+- 1 Full-stack developer (React + Phaser + integration)
+- 1 Game designer (balancing, UX feedback)
+
+**Critical Dependencies:**
+- OneChain testnet RPC stability
+- Sui SDK compatibility (ensure using latest versions)
+- Wallet extension support (Sui Wallet, Suiet, Ethos)
+
+**Risk Mitigation:**
+- Keep smart contracts simple (MVP: 5 NFTs, 1 token, forge function)
+- Test integration early (Week 1: Deploy contracts, query from frontend)
+- Have fallback demo (pre-recorded video if live breaks)
+- Prioritize gameplay feel over feature count
+
+**Key Success Factor:** Players should forget they're using blockchain. The game should feel like a polished indie game, with blockchain as an invisible enhancement layer.
+
+---
+
+**End of Game Design Document**  
+**Version:** 2.0 (Consolidated)  
+**Last Updated:** November 12, 2025  
+**Status:** Ready for Implementation
