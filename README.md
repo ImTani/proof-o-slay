@@ -1,4 +1,4 @@
-# DungeonForge
+# Proof O' Slay
 
 A fast-paced, top-down roguelite game built on OneChain (Sui) with true on-chain asset ownership.
 
@@ -19,7 +19,7 @@ The backend structure is scaffolded and ready for post-hackathon implementation.
 
 ```
 one_chain/
-├── contracts/dungeon_forge/    # Move smart contracts
+├── contracts/proof_o_slay/    # Move smart contracts
 │   ├── sources/                # Move source files
 │   ├── tests/                  # Move test files
 │   └── Move.toml              # Move package config
@@ -72,7 +72,7 @@ cp backend/.env.example backend/.env
 ### 3. Build and Deploy Smart Contracts
 
 ```bash
-cd contracts/dungeon_forge
+cd contracts/proof_o_slay
 
 # Build the Move package
 one move build
@@ -109,7 +109,7 @@ pnpm dev
 
 ## Development Workflow
 
-1. **Smart Contracts**: Edit files in `contracts/dungeon_forge/sources/`
+1. **Smart Contracts**: Edit files in `contracts/proof_o_slay/sources/`
 2. **Game Logic**: Phaser code goes in `frontend/src/game/`
 3. **UI Components**: React components in `frontend/src/components/`
 4. **Blockchain Integration**: Sui SDK utilities in `frontend/src/lib/`
@@ -133,7 +133,7 @@ The game uses composition over inheritance:
 
 ### On-Chain Assets
 
-- **$DUNGEON Token**: Sui Coin standard, minted from forged Shards
+- **$SLAY Token**: Sui Coin standard, minted from forged Shards
 - **Upgrades**: Owned objects (NFTs) that persist in player's wallet
   - Hero's Armor: +20 max HP
   - Swift Boots: +20% movement speed

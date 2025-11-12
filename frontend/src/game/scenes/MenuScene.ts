@@ -27,7 +27,7 @@ export class MenuScene extends Phaser.Scene {
     this.add.rectangle(0, 0, WIDTH, HEIGHT, 0x1a1a2e).setOrigin(0, 0);
 
     // Title
-    const title = this.add.text(centerX, centerY - 250, '🎮 DungeonForge', {
+    const title = this.add.text(centerX, centerY - 250, '🎮 Proof O\' Slay', {
       fontSize: '72px',
       color: '#4287f5',
       fontFamily: 'Arial',

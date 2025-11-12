@@ -1,7 +1,7 @@
 {
-  "name": "backend",
+  "name": "proof-o-slay-backend",
   "version": "1.0.0",
-  "description": "DungeonForge signature service backend",
+  "description": "Proof O' Slay signature service backend",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {

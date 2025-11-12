@@ -90,12 +90,12 @@ export const UPGRADE_CONFIG = {
   ARMOR: {
     name: "Hero's Armor",
     healthBonus: 20, // +20 HP
-    cost: 300, // DUNGEON tokens
+    cost: 300, // SLAY tokens
   },
   BOOTS: {
     name: 'Swift Boots',
     speedMultiplier: 1.2, // +20% speed
-    cost: 500, // DUNGEON tokens
+    cost: 500, // SLAY tokens
   },
 } as const;
 
