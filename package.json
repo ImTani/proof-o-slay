@@ -1,0 +1,7 @@
+{
+  "name": "proof-o-slay",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "cd frontend && pnpm dev"
+  }
+}
