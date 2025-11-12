@@ -79,14 +79,30 @@ export class MenuScene extends Phaser.Scene {
 
     // Register with focus manager
     this.focusManager.register(startButton.text);
+    
+    // Test Weapons button
+    const testButton = createButton(
+      this,
+      centerX,
+      HEIGHT - 80,
+      'TEST WEAPONS',
+      () => this.scene.start('TestScene'),
+      {
+        style: 'warning',
+        fontSize: '24px',
+        icon: '🔧',
+        focusIndex: 4,
+      }
+    );
+    this.focusManager.register(testButton.text);
 
     // Hint text
     const hintText = this.add.text(
       centerX,
-      HEIGHT - 80,
+      HEIGHT - 30,
       'Click a class card to select • Press ENTER to start',
       {
-        fontSize: '18px',
+        fontSize: '16px',
         color: '#666666',
         fontFamily: 'Arial',
       }

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { MenuScene } from './scenes/MenuScene';
 import { GameScene } from './scenes/GameSceneECS';
+import { TestScene } from './scenes/TestScene';
 import { DISPLAY_CONFIG, CHARACTER_CLASSES } from './config/GameConfig';
 
 export interface GameCallbacks {
@@ -44,7 +45,7 @@ export const createGameConfig = (gameConfig: GameConfig): Phaser.Types.Core.Game
     input: {
       gamepad: true, // Enable gamepad support
     },
-    scene: [MenuScene, GameScene], // MenuScene is first (starts automatically)
+    scene: [MenuScene, GameScene, TestScene], // MenuScene is first (starts automatically)
     // Store our custom config in the game registry
     callbacks: {
       preBoot: (game: Phaser.Game) => {
