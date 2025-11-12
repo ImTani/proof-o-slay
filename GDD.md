@@ -461,7 +461,7 @@ public struct StakeRecord has key, store {
 ```move
 // Time-based betting
 public entry fun stake_for_run(
-    payment: Coin<DUNGEON>,
+    payment: Coin<SLAY>,
     target_minutes: u8, // 10, 15, or 20
     ctx: &mut TxContext
 )
@@ -469,7 +469,7 @@ public entry fun stake_for_run(
 public entry fun claim_stake_reward(
     stake_record: &mut StakeRecord,
     survival_time_minutes: u64,
-    treasury_cap: &mut TreasuryCap<DUNGEON>,
+    treasury_cap: &mut TreasuryCap<SLAY>,
     ctx: &mut TxContext
 )
 
@@ -481,7 +481,7 @@ public entry fun forfeit_stake(
 
 // Progressive Jackpot (requires ticket)
 public entry fun start_progressive_jackpot(
-    payment: Coin<DUNGEON>,
+    payment: Coin<SLAY>,
     ticket: JackpotTicket, // Burn ticket on use
     ctx: &mut TxContext
 )
@@ -489,7 +489,7 @@ public entry fun start_progressive_jackpot(
 public entry fun cash_out_jackpot(
     stake_record: &mut StakeRecord,
     survival_time_minutes: u64,
-    treasury_cap: &mut TreasuryCap<DUNGEON>,
+    treasury_cap: &mut TreasuryCap<SLAY>,
     ctx: &mut TxContext
 )
 ```
@@ -695,7 +695,7 @@ this.game.config.callbacks.onGameOver({
 ```
 contracts/proof_o_slay/sources/
 └── proof_o_slay.move
-    ├── DUNGEON token (Coin<DUNGEON>)
+    ├── SLAY token (Coin<SLAY>)
     ├── Treasury (shared object for payments)
     │
     ├── Upgradeable NFTs (owned objects)
@@ -907,7 +907,7 @@ When implementing full security post-hackathon:
 - [ ] Add 3 more character classes (Necromancer, Paladin, Ranger)
 - [ ] Add 5 more weapons (Laser Rifle, Lightning Rod, etc.)
 - [ ] Add 2 more enemy types (Mage, Demon)
-- [ ] Procedural dungeon rooms (Binding of Isaac style)
+- [ ] Procedural SLAY rooms (Binding of Isaac style)
 - [ ] Boss encounters every 5 minutes (unique mechanics)
 - [ ] Pet system (NFT companions that assist in combat)
 

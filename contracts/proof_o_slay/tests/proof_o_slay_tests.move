@@ -68,7 +68,7 @@ module proof_o_slay::proof_o_slay_tests {
             return_treasury_cap(&mut scenario, cap);
         };
         
-        // Verify player received 100 DUNGEON tokens
+        // Verify player received 100 SLAY tokens
         ts::next_tx(&mut scenario, ADMIN);
         {
             let coin = ts::take_from_sender<Coin<PROOF_O_SLAY>>(&scenario);
@@ -138,7 +138,7 @@ module proof_o_slay::proof_o_slay_tests {
     fun test_buy_armor_exact() {
         let mut scenario = setup_test();
         
-        // Mint 300 DUNGEON for player
+        // Mint 300 SLAY for player
         ts::next_tx(&mut scenario, ADMIN);
         {
             let mut cap = take_treasury_cap(&mut scenario);
@@ -175,7 +175,7 @@ module proof_o_slay::proof_o_slay_tests {
     fun test_buy_armor_overpay() {
         let mut scenario = setup_test();
         
-        // Mint 400 DUNGEON for player
+        // Mint 400 SLAY for player
         ts::next_tx(&mut scenario, ADMIN);
         {
             let mut cap = take_treasury_cap(&mut scenario);
@@ -217,7 +217,7 @@ module proof_o_slay::proof_o_slay_tests {
     fun test_buy_armor_insufficient() {
         let mut scenario = setup_test();
         
-        // Mint only 299 DUNGEON
+        // Mint only 299 SLAY
         ts::next_tx(&mut scenario, ADMIN);
         {
             let mut cap = take_treasury_cap(&mut scenario);
@@ -244,7 +244,7 @@ module proof_o_slay::proof_o_slay_tests {
     fun test_buy_boots_exact() {
         let mut scenario = setup_test();
         
-        // Mint 500 DUNGEON for player
+        // Mint 500 SLAY for player
         ts::next_tx(&mut scenario, ADMIN);
         {
             let mut cap = take_treasury_cap(&mut scenario);
@@ -282,7 +282,7 @@ module proof_o_slay::proof_o_slay_tests {
     fun test_buy_boots_insufficient() {
         let mut scenario = setup_test();
         
-        // Mint only 499 DUNGEON
+        // Mint only 499 SLAY
         ts::next_tx(&mut scenario, ADMIN);
         {
             let mut cap = take_treasury_cap(&mut scenario);
@@ -317,7 +317,7 @@ module proof_o_slay::proof_o_slay_tests {
             ts::return_to_address(ADMIN, cap);
         };
         
-        // Buy Armor (300 DUNGEON)
+        // Buy Armor (300 SLAY)
         ts::next_tx(&mut scenario, PLAYER1);
         {
             let payment = ts::take_from_sender<Coin<PROOF_O_SLAY>>(&scenario);
@@ -341,7 +341,7 @@ module proof_o_slay::proof_o_slay_tests {
             ts::return_to_address(ADMIN, cap);
         };
         
-        // Buy Boots (500 DUNGEON)
+        // Buy Boots (500 SLAY)
         ts::next_tx(&mut scenario, PLAYER1);
         {
             let payment = ts::take_from_sender<Coin<PROOF_O_SLAY>>(&scenario);
