@@ -1,6 +1,6 @@
 # 🎮 Proof O' Slay - Game Design Document
 
-**Last Updated:** November 12, 2025  
+**Last Updated:** November 12, 2025 (Gambling System Added)  
 **Status:** Scope finalized, ready for implementation  
 **Genre:** Vampire Survivors-style Auto-Shooter with Blockchain Progression
 
@@ -12,11 +12,12 @@
 3. [Scope Evolution](#scope-evolution)
 4. [Core Systems](#core-systems)
 5. [Game Economy](#game-economy)
-6. [Progression & Scaling](#progression--scaling)
-7. [Technical Architecture](#technical-architecture)
-8. [Security Model](#security-model)
-9. [Success Criteria](#success-criteria)
-10. [Demo Strategy](#demo-strategy)
+6. [Gambling System](#gambling-system)
+7. [Progression & Scaling](#progression--scaling)
+8. [Technical Architecture](#technical-architecture)
+9. [Security Model](#security-model)
+10. [Success Criteria](#success-criteria)
+11. [Demo Strategy](#demo-strategy)
 
 ---
 
@@ -360,9 +361,179 @@ Spend on Consumables    Forge into $SLAY (on-chain)
 
 ---
 
-## 6. Progression & Scaling {#progression--scaling}
+## 6. Gambling System {#gambling-system}
 
-### 6.1 Player Progression Timeline
+### 6.1 Time-Based Betting (Core System)
+
+Players can optionally stake $SLAY tokens before a run, betting on their survival time. This is **completely optional** and never forced.
+
+#### How It Works:
+1. Before starting a run, player can choose to stake $SLAY
+2. Select a survival time goal: 10, 15, or 20 minutes
+3. If they survive the target time, they win a multiplied payout
+4. If they die before the target, they lose their stake
+
+#### Betting Tiers:
+
+| Goal | Minimum Stake | Multiplier | Example Payout |
+|------|---------------|------------|----------------|
+| **Survive 10 min** | 50 $SLAY | 1.5x | 50 → 75 $SLAY |
+| **Survive 15 min** | 100 $SLAY | 2.0x | 100 → 200 $SLAY |
+| **Survive 20 min** | 200 $SLAY | 3.0x | 200 → 600 $SLAY |
+
+**Risk/Reward Balance:**
+- Low stakes for casual players (50-100 $SLAY)
+- Achievable targets based on player progression
+- 10-minute goal is accessible even for beginners
+- 20-minute goal is challenging but rewarding
+
+**UI Integration:**
+- Optional checkbox on class selection screen: "Stake for this run?"
+- Shows potential payout: "Risk 100 $SLAY to win 200 $SLAY (15 min)"
+- Clear countdown timer during gameplay
+- Victory screen shows winnings prominently
+
+---
+
+### 6.2 Progressive Jackpot (Special Event)
+
+An advanced gambling mode that must be **earned** by players, not freely accessible.
+
+#### Unlock Conditions:
+Players earn **Jackpot Tickets** by:
+- Completing 10 successful time-based bets (1 ticket)
+- Surviving 25+ minutes in a single run (1 ticket)
+- Achieving 3 consecutive runs of 15+ minutes (2 tickets)
+- Daily login bonus (1 ticket per week)
+
+**Ticket UI:** Show owned tickets in hub (e.g., "🎟️ Jackpot Tickets: 3")
+
+#### How Progressive Jackpot Works:
+1. Spend 1 Jackpot Ticket + stake amount (50-500 $SLAY)
+2. Multiplier starts at 1.1x and increases by 0.1x every minute survived
+3. Player can press **"C" key** at any time to cash out current winnings
+4. If they die before cashing out, they lose everything
+
+#### Example Run:
+```
+Start: Stake 100 $SLAY + 1 Ticket
+5 min:  Current value: 150 $SLAY (1.5x) - Press C to claim, or keep going?
+10 min: Current value: 200 $SLAY (2.0x) - Tension rising...
+15 min: Current value: 250 $SLAY (2.5x) - Do I cash out or push to 3x?
+*Dies at 16 min* - Lose everything!
+
+OR
+
+*Presses C at 12 min* - Walk away with 220 $SLAY (2.2x)
+```
+
+#### Gameplay Dynamics:
+- **Tension:** Every second you survive increases reward, but death is inevitable
+- **Decision Making:** "Do I cash out now or push my luck?"
+- **High Stakes:** Losing a ticket + stake hurts, but potential rewards are massive
+- **Skill Expression:** Experienced players can confidently push to 20-25 minutes
+
+#### Balance Considerations:
+- **Limited Access:** Tickets prevent jackpot spam, maintain special event feel
+- **Progressive Risk:** Early cash-out is safe, late push is thrilling
+- **Economy Safety:** Max ~3x multiplier even at 30 min (1.1 + 0.1 × 20 = 3.1x)
+- **Psychological Hook:** Creates memorable "I almost got 500 $SLAY!" moments
+
+---
+
+### 6.3 Smart Contract Implementation
+
+#### Staking Record Struct:
+```move
+public struct StakeRecord has key, store {
+    id: UID,
+    player: address,
+    stake_amount: u64,
+    bet_type: u8, // 0 = Time-based, 1 = Progressive Jackpot
+    target_minutes: u8, // For time-based bets
+    multiplier: u64, // Fixed for time-based, dynamic for jackpot
+    start_time: u64,
+    is_active: bool
+}
+```
+
+#### Entry Functions:
+```move
+// Time-based betting
+public entry fun stake_for_run(
+    payment: Coin<DUNGEON>,
+    target_minutes: u8, // 10, 15, or 20
+    ctx: &mut TxContext
+)
+
+public entry fun claim_stake_reward(
+    stake_record: &mut StakeRecord,
+    survival_time_minutes: u64,
+    treasury_cap: &mut TreasuryCap<DUNGEON>,
+    ctx: &mut TxContext
+)
+
+public entry fun forfeit_stake(
+    stake_record: StakeRecord,
+    treasury: &mut Treasury,
+    ctx: &mut TxContext
+)
+
+// Progressive Jackpot (requires ticket)
+public entry fun start_progressive_jackpot(
+    payment: Coin<DUNGEON>,
+    ticket: JackpotTicket, // Burn ticket on use
+    ctx: &mut TxContext
+)
+
+public entry fun cash_out_jackpot(
+    stake_record: &mut StakeRecord,
+    survival_time_minutes: u64,
+    treasury_cap: &mut TreasuryCap<DUNGEON>,
+    ctx: &mut TxContext
+)
+```
+
+#### Jackpot Ticket NFT:
+```move
+public struct JackpotTicket has key, store {
+    id: UID,
+    earned_by: address,
+    issued_date: u64
+}
+
+// Earned automatically via game logic (frontend awards after milestones)
+public entry fun award_jackpot_ticket(
+    recipient: address,
+    ctx: &mut TxContext
+)
+```
+
+---
+
+### 6.4 Honor System & Security
+
+**MVP Approach (Honor System):**
+- Frontend reports survival time to contract via `claim_stake_reward`
+- Contract trusts the reported time (same as forge system)
+- Max stake limits prevent massive exploits (500 $SLAY max)
+
+**Production Security:**
+- Backend signature required: `claim_stake_reward_with_signature(stake_record, survival_time, timestamp, signature)`
+- ECDSA verification ensures legitimate survival time
+- Same backend service as forge system
+
+**Risk Mitigation:**
+- Stake limits: 50-500 $SLAY range (prevents whale exploits)
+- Jackpot tickets are limited resource (can't spam jackpot mode)
+- Failed stakes go to treasury (community benefit)
+- Contract emits events for analytics/fraud detection
+
+---
+
+## 7. Progression & Scaling {#progression--scaling}
+
+### 7.1 Player Progression Timeline
 
 | Milestone | Shards Needed | Runs @ 300/run | Time @ 15min/run |
 |-----------|---------------|----------------|------------------|
@@ -380,7 +551,7 @@ Spend on Consumables    Forge into $SLAY (on-chain)
 - **Month 1 (20-40 hours):** Push high-level NFTs (L4-L5), unlock Flamethrower
 - **Long-term (50+ hours):** Max everything, grind for Celestial Cannon
 
-### 6.2 Power Curve Visualization
+### 7.2 Power Curve Visualization
 
 **Early Game (No NFTs):**
 - Base damage: 10
@@ -408,9 +579,9 @@ Spend on Consumables    Forge into $SLAY (on-chain)
 
 ---
 
-## 7. Technical Architecture {#technical-architecture}
+## 8. Technical Architecture {#technical-architecture}
 
-### 7.1 Component-Based ECS Structure
+### 8.1 Component-Based ECS Structure
 
 **Philosophy:** Composition over inheritance, inspired by Godot's node system.
 
@@ -483,7 +654,7 @@ export function createLaserBullet(scene, x, y, angle) {
 
 **NO code changes needed** for new enemies, classes, or power-ups—just update config files.
 
-### 7.2 React ↔ Phaser Bridge
+### 8.2 React ↔ Phaser Bridge
 
 **Communication Flow:**
 
@@ -517,7 +688,7 @@ this.game.config.callbacks.onGameOver({
 });
 ```
 
-### 7.3 Blockchain Architecture
+### 8.3 Blockchain Architecture
 
 **Smart Contract Structure:**
 
@@ -564,9 +735,9 @@ gameConfig.nftBonuses.damage = 1 + damageBonus;
 
 ---
 
-## 8. Security Model {#security-model}
+## 9. Security Model {#security-model}
 
-### 8.1 Honor System (MVP)
+### 9.1 Honor System (MVP)
 
 **Current Approach:** For the hackathon MVP, we are implementing an **honor system** without backend signature verification.
 
@@ -585,7 +756,7 @@ gameConfig.nftBonuses.damage = 1 + damageBonus;
 **Judges Acknowledgment:**
 > "In production, we would implement backend signature verification using ECDSA secp256k1 to prevent shard inflation exploits. The forge system would require a backend-signed message proving the player legitimately earned those shards. For this demo, we're focused on showcasing the gameplay loop and on-chain upgrade mechanics."
 
-### 8.2 Production Security Plan
+### 9.2 Production Security Plan
 
 When implementing full security post-hackathon:
 
@@ -611,9 +782,9 @@ When implementing full security post-hackathon:
 
 ---
 
-## 9. Success Criteria {#success-criteria}
+## 10. Success Criteria {#success-criteria}
 
-### 9.1 MVP Complete Checklist
+### 10.1 MVP Complete Checklist
 
 #### Core Gameplay
 - [ ] 3 classes playable with distinct feels (Warrior, Mage, Rogue)
@@ -651,7 +822,7 @@ When implementing full security post-hackathon:
 - [ ] NFT queries complete in <2 seconds
 - [ ] Game state syncs correctly with blockchain
 
-### 9.2 Demo Day Success
+### 10.2 Demo Day Success
 
 **3-Minute Demo Flow:**
 
@@ -682,9 +853,9 @@ When implementing full security post-hackathon:
 
 ---
 
-## 10. Demo Strategy {#demo-strategy}
+## 11. Demo Strategy {#demo-strategy}
 
-### 10.1 Pitch Structure
+### 11.1 Pitch Structure
 
 **Minute 1: Problem & Solution**
 > "Blockchain games promise asset ownership, but they're slow turn-based experiences with clunky UX. Players want fast-paced action, not waiting for transactions between every move.
@@ -711,7 +882,7 @@ When implementing full security post-hackathon:
 **Call to Action:**
 > "Try the demo yourself at [URL]. We're launching on mainnet next month, and early testers will receive Genesis Class NFTs. Questions?"
 
-### 10.2 Common Judge Questions
+### 11.2 Common Judge Questions
 
 **Q: "Why not just use a traditional database?"**
 > A: "Two reasons: (1) True ownership—players can trade their Level 5 Power Ring to other players. (2) Composability—future games could recognize these NFTs and grant bonuses. Our NFTs aren't just stats, they're portable assets."
@@ -730,7 +901,7 @@ When implementing full security post-hackathon:
 
 ---
 
-## 11. Post-MVP Roadmap {#post-mvp-roadmap}
+## 12. Post-MVP Roadmap {#post-mvp-roadmap}
 
 ### Phase 5: Content Expansion (Months 2-3)
 - [ ] Add 3 more character classes (Necromancer, Paladin, Ranger)
@@ -763,7 +934,7 @@ When implementing full security post-hackathon:
 
 ---
 
-## 12. Appendix: Data-Driven Modularity {#appendix}
+## 13. Appendix: Data-Driven Modularity {#appendix}
 
 ### Adding New Weapons (Example)
 
@@ -856,7 +1027,7 @@ if (cloaks.data.length > 0) {
 
 ---
 
-## 13. Final Notes
+## 14. Final Notes
 
 **Development Timeline:** 3-4 weeks for full MVP (all phases 1-4)
 
