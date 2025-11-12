@@ -5,7 +5,6 @@ import { MovementSystem } from '../systems/MovementSystem';
 import { WeaponSystem } from '../systems/WeaponSystem';
 import { ProjectileSystem } from '../systems/ProjectileSystem';
 import type { MovementComponent } from '../components/MovementComponent';
-import type { InputComponent } from '../components/InputComponent';
 import type { WeaponComponent } from '../components/WeaponComponent';
 import type { WeaponSpriteComponent } from '../components/WeaponSpriteComponent';
 import type { ProjectileComponent } from '../components/ProjectileComponent';

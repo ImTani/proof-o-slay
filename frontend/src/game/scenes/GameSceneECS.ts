@@ -48,7 +48,8 @@ export class GameScene extends Phaser.Scene {
   private focusManager!: FocusManager;
   
   // Cameras
-  private uiCamera!: Phaser.Cameras.Scene2D.Camera;
+  // Disabling this camera right now, it was breaking things.
+  // private uiCamera!: Phaser.Cameras.Scene2D.Camera; 
   
   // Entity groups
   private player!: Phaser.Physics.Arcade.Sprite;
@@ -203,6 +204,7 @@ export class GameScene extends Phaser.Scene {
   
   update(time: number, delta: number) {
     // Note: delta (ms since last frame) available for future use if needed
+    void delta; // Just to get rid of the `unused variable` warning.
     // Currently using Phaser physics (frame-rate independent) and timestamp-based cooldowns
     
     // Handle pause menu focus navigation
