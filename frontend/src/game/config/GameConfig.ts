@@ -9,7 +9,7 @@ import Phaser from 'phaser';
 export const PLAYER_CONFIG = {
   BASE_HEALTH: 100,
   BASE_SPEED: 100,
-  INVINCIBILITY_DURATION: 1000, // ms
+  INVINCIBILITY_DURATION: 300, // ms
   KNOCKBACK_FORCE: 200,
 } as const;
 
@@ -39,20 +39,49 @@ export const WEAPONS: Record<string, WeaponConfig> = {
 export interface CharacterClass {
   name: string;
   startingWeapon: keyof typeof WEAPONS;
-  healthModifier: number; // Multiplier (1.0 = 100 HP, 1.2 = 120 HP)
-  speedModifier: number; // Multiplier (1.0 = 100 speed, 1.2 = 120 speed)
+  baseHealth: number; // Base HP
+  baseSpeed: number; // Base movement speed
+  damageMultiplier: number; // Damage multiplier (1.0 = base, 1.3 = +30%)
+  skillCooldown: number; // ms between skill uses
   description: string;
+  skillName: string;
+  skillDescription: string;
 }
 
 export const CHARACTER_CLASSES: Record<string, CharacterClass> = {
   WARRIOR: {
     name: 'Warrior',
-    startingWeapon: 'PISTOL',
-    healthModifier: 1.0,
-    speedModifier: 1.0,
-    description: 'Balanced fighter with steady aim',
+    startingWeapon: 'PISTOL', // Will be IRON_SWORD once implemented
+    baseHealth: 120,
+    baseSpeed: 100,
+    damageMultiplier: 1.0,
+    skillCooldown: 5000, // 5 seconds
+    description: 'Balanced bruiser with high survivability',
+    skillName: 'Battle Dash',
+    skillDescription: 'Dash forward, invincible 0.5s, damage enemies',
   },
-  // Future classes can be added here
+  MAGE: {
+    name: 'Mage',
+    startingWeapon: 'PISTOL', // Will be ARCANE_STAFF once implemented
+    baseHealth: 80,
+    baseSpeed: 90,
+    damageMultiplier: 1.3,
+    skillCooldown: 8000, // 8 seconds
+    description: 'Glass cannon with highest damage output',
+    skillName: 'Arcane Nova',
+    skillDescription: '150 damage to all enemies in radius, knockback',
+  },
+  ROGUE: {
+    name: 'Rogue',
+    startingWeapon: 'PISTOL', // Will be TWIN_DAGGERS once implemented
+    baseHealth: 100,
+    baseSpeed: 120,
+    damageMultiplier: 1.1,
+    skillCooldown: 10000, // 10 seconds
+    description: 'High mobility assassin with evasion',
+    skillName: 'Phantom Barrier',
+    skillDescription: 'Absorb next 100 damage, lasts 6 seconds',
+  },
 } as const;
 
 // ===== ENEMIES =====
@@ -223,12 +252,12 @@ export const calculatePlayerStats = (
 ) => {
   const classData = CHARACTER_CLASSES[className];
   
-  let maxHealth = PLAYER_CONFIG.BASE_HEALTH * classData.healthModifier;
+  let maxHealth = classData.baseHealth;
   if (hasArmor) {
     maxHealth += UPGRADE_CONFIG.ARMOR.healthBonus;
   }
   
-  let speed = PLAYER_CONFIG.BASE_SPEED * classData.speedModifier;
+  let speed = classData.baseSpeed;
   if (hasBoots) {
     speed *= UPGRADE_CONFIG.BOOTS.speedMultiplier;
   }
@@ -236,6 +265,8 @@ export const calculatePlayerStats = (
   return {
     maxHealth: Math.round(maxHealth),
     speed: Math.round(speed),
+    damageMultiplier: classData.damageMultiplier,
     weapon: WEAPONS[classData.startingWeapon],
+    skillCooldown: classData.skillCooldown,
   };
 };

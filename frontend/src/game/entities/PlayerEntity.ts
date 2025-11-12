@@ -4,6 +4,7 @@ import { createMovementComponent } from '../components/MovementComponent';
 import { createWeaponComponent } from '../components/WeaponComponent';
 import { createInputComponent } from '../components/InputComponent';
 import { createWeaponSpriteComponent } from '../components/WeaponSpriteComponent';
+import { createClassComponent, type ClassType } from '../components/ClassComponent';
 import { calculatePlayerStats, CHARACTER_CLASSES } from '../config/GameConfig';
 
 export interface PlayerUpgrades {
@@ -36,16 +37,54 @@ export const createPlayerEntity = (
   sprite.setData('movement', createMovementComponent(stats.speed));
   sprite.setData('weapon', createWeaponComponent(
     stats.weapon.fireRate,
-    stats.weapon.damage,
+    stats.weapon.damage * stats.damageMultiplier, // Apply class damage multiplier
     stats.weapon.bulletSpeed
   ));
   sprite.setData('input', createInputComponent(scene));
   sprite.setData('weaponSprite', createWeaponSpriteComponent(weaponSprite, stats.weapon.weaponOffset));
+  sprite.setData('class', createClassComponent(className as ClassType, stats.skillCooldown));
   sprite.setData('entityType', 'player');
   sprite.setData('className', className);
   sprite.setData('weaponConfig', stats.weapon);
+  sprite.setData('damageMultiplier', stats.damageMultiplier);
   
-  console.log(`🎮 ${CHARACTER_CLASSES[className].name} created with HP: ${stats.maxHealth}, Speed: ${stats.speed}, Weapon: ${stats.weapon.name}`);
+  console.log(`🎮 ${CHARACTER_CLASSES[className].name} created with HP: ${stats.maxHealth}, Speed: ${stats.speed}, Damage: ${stats.damageMultiplier}x, Weapon: ${stats.weapon.name}`);
   
   return sprite;
+};
+
+/**
+ * Warrior Entity Factory - Balanced bruiser (120 HP, 100 speed, 1.0x damage)
+ */
+export const createWarriorEntity = (
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  upgrades: PlayerUpgrades
+): Phaser.Physics.Arcade.Sprite => {
+  return createPlayerEntity(scene, x, y, upgrades, 'WARRIOR');
+};
+
+/**
+ * Mage Entity Factory - Glass cannon (80 HP, 90 speed, 1.3x damage)
+ */
+export const createMageEntity = (
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  upgrades: PlayerUpgrades
+): Phaser.Physics.Arcade.Sprite => {
+  return createPlayerEntity(scene, x, y, upgrades, 'MAGE');
+};
+
+/**
+ * Rogue Entity Factory - High mobility (100 HP, 120 speed, 1.1x damage)
+ */
+export const createRogueEntity = (
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  upgrades: PlayerUpgrades
+): Phaser.Physics.Arcade.Sprite => {
+  return createPlayerEntity(scene, x, y, upgrades, 'ROGUE');
 };
