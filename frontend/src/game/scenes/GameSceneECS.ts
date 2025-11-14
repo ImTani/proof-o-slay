@@ -2,13 +2,14 @@ import Phaser from 'phaser';
 import type { GameConfig } from '../config';
 
 // Game Configuration
-import { 
+import {
   DISPLAY_CONFIG,
-  WORLD_CONFIG, 
+  WORLD_CONFIG,
   CAMERA_CONFIG,
-  WAVE_CONFIG, 
+  WAVE_CONFIG,
   PLAYER_CONFIG,
-  UI_CONFIG
+  UI_CONFIG,
+  CHARACTER_CLASSES
 } from '../config/GameConfig';
 
 // Systems
@@ -18,6 +19,7 @@ import { AISystem } from '../systems/AISystem';
 import { HealthSystem } from '../systems/HealthSystem';
 import { ProjectileSystem } from '../systems/ProjectileSystem';
 import { WeaponSystem } from '../systems/WeaponSystem';
+import { SkillManager } from '../systems/SkillManager';
 import { FocusManager } from '../systems/FocusManager';
 import { GameManager } from '../systems/GameManager';
 
@@ -45,49 +47,54 @@ export class GameScene extends Phaser.Scene {
   private healthSystem!: HealthSystem;
   private projectileSystem!: ProjectileSystem;
   private weaponSystem!: WeaponSystem;
+  private skillManager!: SkillManager;
   private focusManager!: FocusManager;
-  
+
   // Cameras
   // Disabling this camera right now, it was breaking things.
   // private uiCamera!: Phaser.Cameras.Scene2D.Camera; 
-  
+
   // Entity groups
   private player!: Phaser.Physics.Arcade.Sprite;
   private bullets!: Phaser.Physics.Arcade.Group;
   private enemies!: Phaser.Physics.Arcade.Group;
   private shards!: Phaser.Physics.Arcade.Group;
-  
+
   // Game state
   private shardCount = 0;
   private currentWave = 0;
   private enemiesAlive = 0;
   private gameManager: GameManager;
-  
+
   // Pause menu UI
   private pauseOverlay!: Phaser.GameObjects.Rectangle | null;
   private pauseTitle!: Phaser.GameObjects.Text | null;
   private pauseResumeButton!: ButtonEntity | null;
   private pauseMenuButton!: ButtonEntity | null;
   private escKey!: Phaser.Input.Keyboard.Key;
-  
+  private spaceKey!: Phaser.Input.Keyboard.Key;
+
   // UI
   private healthBarBg!: Phaser.GameObjects.Rectangle;
   private healthBarFill!: Phaser.GameObjects.Rectangle;
   private healthText!: Phaser.GameObjects.Text;
   private shardText!: Phaser.GameObjects.Text;
   private waveText!: Phaser.GameObjects.Text;
-  
+  private skillCooldownBg!: Phaser.GameObjects.Rectangle;
+  private skillCooldownFill!: Phaser.GameObjects.Rectangle;
+  private skillText!: Phaser.GameObjects.Text;
+
   private gameConfig!: GameConfig;
-  
+
   constructor() {
     super({ key: 'GameScene' });
     this.gameManager = GameManager.getInstance();
   }
-  
+
   init() {
     // Get custom config from registry
     this.gameConfig = this.registry.get('gameConfig');
-    
+
     // Initialize systems
     this.inputSystem = new InputSystem(this);
     this.movementSystem = new MovementSystem();
@@ -95,26 +102,27 @@ export class GameScene extends Phaser.Scene {
     this.healthSystem = new HealthSystem();
     this.projectileSystem = new ProjectileSystem();
     this.weaponSystem = new WeaponSystem();
+    this.skillManager = new SkillManager(this, this.healthSystem);
     this.focusManager = new FocusManager(this);
   }
-  
+
   preload() {
     this.createPlaceholderGraphics();
   }
-  
+
   create() {
     // Set up infinite world bounds
     this.physics.world.setBounds(0, 0, WORLD_CONFIG.WIDTH, WORLD_CONFIG.HEIGHT);
-    
+
     // Create seamless tiling background
     this.createTilingBackground();
-    
+
     // Set up cameras
     // Main camera follows player (will zoom/move with game world)
     this.cameras.main.setBounds(0, 0, WORLD_CONFIG.WIDTH, WORLD_CONFIG.HEIGHT);
     this.cameras.main.setZoom(CAMERA_CONFIG.ZOOM);
     this.cameras.main.roundPixels = CAMERA_CONFIG.ROUND_PIXELS;
-    
+
     // TEMPORARY: UI camera disabled for debugging
     // UI camera stays fixed (no zoom, no movement)
     // This camera should ignore everything by default (we'll add UI elements to it explicitly)
@@ -124,27 +132,28 @@ export class GameScene extends Phaser.Scene {
     this.uiCamera.setZoom(1); // Always 1:1 zoom
     this.uiCamera.roundPixels = true;
     */
-    
+
     // Create player entity at world center
     const upgrades: PlayerUpgrades = {
       hasArmor: this.gameConfig.upgrades.hasArmor,
       hasBoots: this.gameConfig.upgrades.hasBoots,
     };
-    
+
     // Get selected class from game config (default to WARRIOR if not set)
     const selectedClass = this.gameConfig.selectedClass || 'WARRIOR';
-    
+
     this.player = createPlayerEntity(
       this,
       WORLD_CONFIG.WIDTH / 2,
       WORLD_CONFIG.HEIGHT / 2,
       upgrades,
-      selectedClass
+      selectedClass,
+      this.skillManager
     );
-    
+
     // Set player collision with world bounds
     this.player.setCollideWorldBounds(true);
-    
+
     // TEMPORARY: Commented out for debugging
     /*
     // Make UI camera ignore player and weapon sprite (game world objects)
@@ -155,93 +164,104 @@ export class GameScene extends Phaser.Scene {
       this.uiCamera.ignore(this.player);
     }
     */
-    
+
     // Make main camera follow player with smooth lerp
     this.cameras.main.startFollow(this.player, CAMERA_CONFIG.ROUND_PIXELS, CAMERA_CONFIG.LERP_X, CAMERA_CONFIG.LERP_Y);
-    
+
     // Set up deadzone to reduce jitter during diagonal movement
     if (CAMERA_CONFIG.DEADZONE_WIDTH > 0 || CAMERA_CONFIG.DEADZONE_HEIGHT > 0) {
       const deadzoneWidth = DISPLAY_CONFIG.WIDTH * CAMERA_CONFIG.DEADZONE_WIDTH;
       const deadzoneHeight = DISPLAY_CONFIG.HEIGHT * CAMERA_CONFIG.DEADZONE_HEIGHT;
       this.cameras.main.setDeadzone(deadzoneWidth, deadzoneHeight);
     }
-    
+
     // Create entity groups
     this.bullets = this.physics.add.group({
       defaultKey: 'bullet',
       maxSize: -1, // Unlimited pool size
       runChildUpdate: false,
     });
-    
+
     this.enemies = this.physics.add.group();
     this.shards = this.physics.add.group();
-    
+
     // Make UI camera ignore game object groups (all children will inherit this)
     // Note: We can't directly ignore groups, but we'll need to ignore individual sprites as they're created
     // For now, this ensures the groups themselves don't interfere
-    
+
     // Set up collisions
     this.setupCollisions();
-    
+
     // Create UI
     this.createUI();
-    
+
     // Set up ESC key for pause menu
     this.escKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
     this.escKey.on('down', () => {
       this.togglePause();
     });
-    
+
+    // Set up SPACE key for skills
+    this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+
     // Initialize pause menu UI elements (hidden by default)
     this.pauseOverlay = null;
     this.pauseTitle = null;
     this.pauseResumeButton = null;
     this.pauseMenuButton = null;
-    
+
     // Start first wave
     this.startNextWave();
   }
-  
+
   update(time: number, delta: number) {
     // Note: delta (ms since last frame) available for future use if needed
     void delta; // Just to get rid of the `unused variable` warning.
     // Currently using Phaser physics (frame-rate independent) and timestamp-based cooldowns
-    
+
     // Handle pause menu focus navigation
     if (this.gameManager.isPaused()) {
       this.focusManager.update(time);
       return;
     }
-    
+
     const playerHealth = this.player.getData('health') as HealthComponent;
-    
+
     // Skip update if dead
     if (this.healthSystem.isDead(playerHealth)) {
       // Still update focus manager for game over screen
       this.focusManager.update(time);
       return;
     }
-    
+
     // Update player input and movement
     const playerInput = this.player.getData('input') as InputComponent;
     const playerMovement = this.player.getData('movement') as MovementComponent;
     const pointer = this.input.activePointer;
-    
+
     this.inputSystem.update(this.player, playerInput, playerMovement);
     this.movementSystem.update(this.player, playerMovement);
-    
+
+    // Update skill state via SkillManager
+    this.skillManager.update(this.player, time);
+
+    // Handle skill activation (Spacebar or gamepad)
+    if (Phaser.Input.Keyboard.JustDown(this.spaceKey) || this.inputSystem.isSkillPressed()) {
+      this.skillManager.useSkill(this.player, time, this.enemies);
+    }
+
     // Update weapon position and rotation
     const weaponSpriteComp = this.player.getData('weaponSprite') as WeaponSpriteComponent;
     const playerWeapon = this.player.getData('weapon') as WeaponComponent;
     const damageMultiplier = this.player.getData('damageMultiplier') as number || 1.0;
-    
+
     // Get aim direction from gamepad or mouse
     const aimDir = this.inputSystem.getAimDirection(this.player, pointer);
     if (aimDir) {
       const targetX = this.player.x + aimDir.x * 100; // Project aim 100 pixels out
       const targetY = this.player.y + aimDir.y * 100;
       this.weaponSystem.updatePosition(this.player, weaponSpriteComp, targetX, targetY);
-      
+
       // Handle shooting (gamepad or mouse)
       if (this.inputSystem.isFirePressed(pointer)) {
         // Fire from weapon sprite position, not player center
@@ -262,17 +282,17 @@ export class GameScene extends Phaser.Scene {
       const defaultTargetY = this.player.y;
       this.weaponSystem.updatePosition(this.player, weaponSpriteComp, defaultTargetX, defaultTargetY);
     }
-    
+
     // Update enemies
     this.updateEnemies();
-    
+
     // Update projectiles
     this.updateProjectiles();
-    
+
     // Update UI
     this.updateHealthBar();
   }
-  
+
   private setupCollisions(): void {
     // Bullet hits enemy
     this.physics.add.overlap(
@@ -282,12 +302,12 @@ export class GameScene extends Phaser.Scene {
         const bulletSprite = bullet as Phaser.Physics.Arcade.Sprite;
         const enemySprite = enemy as Phaser.Physics.Arcade.Sprite;
         const projectile = bulletSprite.getData('projectile') as ProjectileComponent;
-        
+
         // Check if this is a piercing projectile
         if (projectile.pierceCount !== undefined && projectile.pierceCount > 0) {
           // Decrement pierce count
           projectile.pierceCount--;
-          
+
           // Destroy if no pierces left
           if (projectile.pierceCount <= 0) {
             this.projectileSystem.destroyProjectile(bulletSprite);
@@ -297,7 +317,7 @@ export class GameScene extends Phaser.Scene {
           this.projectileSystem.destroyProjectile(bulletSprite);
         }
         // pierce_all projectiles never get destroyed
-        
+
         // Damage enemy
         const enemyHealth = enemySprite.getData('health') as HealthComponent;
         const isDead = this.healthSystem.takeDamage(
@@ -307,7 +327,7 @@ export class GameScene extends Phaser.Scene {
           this,
           Date.now()
         );
-        
+
         if (isDead) {
           this.onEnemyDeath(enemySprite);
         }
@@ -315,7 +335,7 @@ export class GameScene extends Phaser.Scene {
       undefined,
       this
     );
-    
+
     // Enemy hits player
     this.physics.add.overlap(
       this.player,
@@ -323,52 +343,62 @@ export class GameScene extends Phaser.Scene {
       (_, enemy) => {
         const enemySprite = enemy as Phaser.Physics.Arcade.Sprite;
         const playerHealth = this.player.getData('health') as HealthComponent;
-        
+
         // Check if player is invincible (use Date.now for consistency)
         const currentTime = Date.now();
         if (playerHealth.isInvincible && currentTime < playerHealth.invincibilityEndTime) {
           return; // Skip damage if still invincible
         }
-        
-        const damage = enemySprite.getData('damage') as number;
-        
-        // Apply damage
-        const isDead = this.healthSystem.takeDamage(
-          this.player,
-          playerHealth,
-          damage,
-          this,
-          currentTime
-        );
-        
-        // Always activate iframes after taking damage (regardless of death)
-        this.healthSystem.activateInvincibility(
-          this.player,
-          playerHealth,
-          PLAYER_CONFIG.INVINCIBILITY_DURATION,
-          this,
-          currentTime
-        );
-        
-        // Knockback
-        const angle = Phaser.Math.Angle.Between(
-          enemySprite.x,
-          enemySprite.y,
-          this.player.x,
-          this.player.y
-        );
-        const knockback = PLAYER_CONFIG.KNOCKBACK_FORCE;
-        this.player.setVelocity(Math.cos(angle) * knockback, Math.sin(angle) * knockback);
-        
-        // Check game over
-        if (isDead) {
-          this.gameOver();
+
+        // Check if player has Battle Dash invincibility active
+        if (this.player.getData('invincible') === true) {
+          return; // Skip damage during dash
+        }
+
+        let damage = enemySprite.getData('damage') as number;
+
+        // Apply barrier absorption if active (handled by SkillManager)
+        damage = this.skillManager.handleBarrierDamage(this.player, damage, currentTime);
+
+        // Apply damage (if any remains after barrier)
+        if (damage > 0) {
+          const isDead = this.healthSystem.takeDamage(
+            this.player,
+            playerHealth,
+            damage,
+            this,
+            currentTime
+          );
+
+          // Always activate iframes after taking damage (regardless of death)
+          this.healthSystem.activateInvincibility(
+            this.player,
+            playerHealth,
+            PLAYER_CONFIG.INVINCIBILITY_DURATION,
+            this,
+            currentTime
+          );
+
+          // Knockback
+          const angle = Phaser.Math.Angle.Between(
+            enemySprite.x,
+            enemySprite.y,
+            this.player.x,
+            this.player.y
+          );
+          const knockback = PLAYER_CONFIG.KNOCKBACK_FORCE;
+          this.player.setVelocity(Math.cos(angle) * knockback, Math.sin(angle) * knockback);
+
+          // Check game over
+          if (isDead) {
+            this.gameOver();
+          }
         }
       },
       undefined,
       this
     );
-    
+
     // Player collects shard
     this.physics.add.overlap(
       this.player,
@@ -376,10 +406,10 @@ export class GameScene extends Phaser.Scene {
       (_, shard) => {
         const shardSprite = shard as Phaser.Physics.Arcade.Sprite;
         const collectible = shardSprite.getData('collectible') as CollectibleComponent;
-        
+
         this.shardCount += collectible.value;
         this.shardText.setText(`Shards: ${this.shardCount}`);
-        
+
         // Visual feedback
         this.tweens.add({
           targets: shardSprite,
@@ -393,38 +423,38 @@ export class GameScene extends Phaser.Scene {
       this
     );
   }
-  
+
   // Note: shootBullet method removed - weapon firing now handled by WeaponSystem.tryFire()
-  
+
   private updateEnemies(): void {
     const playerPos = new Phaser.Math.Vector2(this.player.x, this.player.y);
-    
+
     this.enemies.children.entries.forEach((enemy) => {
       const sprite = enemy as Phaser.Physics.Arcade.Sprite;
       if (!sprite.active || !sprite.body) return;
-      
+
       const ai = sprite.getData('ai') as AIComponent;
       this.aiSystem.update(sprite, ai, playerPos);
     });
   }
-  
+
   private updateProjectiles(): void {
     const currentTime = this.time.now;
     this.bullets.children.entries.forEach((bullet) => {
       const sprite = bullet as Phaser.Physics.Arcade.Sprite;
       if (!sprite.active) return;
-      
+
       const projectile = sprite.getData('projectile') as ProjectileComponent;
       this.projectileSystem.update(sprite, projectile, currentTime, this.enemies);
     });
   }
-  
+
   private startNextWave(): void {
     this.currentWave++;
     this.waveText.setText(`Wave: ${this.currentWave}`);
-    
+
     const enemyCount = WAVE_CONFIG.BASE_ENEMY_COUNT + (this.currentWave * WAVE_CONFIG.ENEMIES_PER_WAVE);
-    
+
     for (let i = 0; i < enemyCount; i++) {
       const edge = Phaser.Math.Between(0, 3);
       const pos = this.getSpawnPosition(edge);
@@ -432,15 +462,15 @@ export class GameScene extends Phaser.Scene {
       this.enemies.add(enemy);
       this.enemiesAlive++;
     }
-    
+
     console.log(`🌊 Wave ${this.currentWave}: ${enemyCount} enemies`);
   }
-  
+
   private getSpawnPosition(edge: number): { x: number; y: number } {
     const margin = WAVE_CONFIG.SPAWN_EDGE_MARGIN;
     const maxX = WORLD_CONFIG.WIDTH - margin;
     const maxY = WORLD_CONFIG.HEIGHT - margin;
-    
+
     switch (edge) {
       case 0: // Top
         return { x: Phaser.Math.Between(margin, maxX), y: margin };
@@ -453,16 +483,16 @@ export class GameScene extends Phaser.Scene {
         return { x: margin, y: Phaser.Math.Between(margin, maxY) };
     }
   }
-  
+
   private onEnemyDeath(enemy: Phaser.Physics.Arcade.Sprite): void {
     // Drop shard
     const shard = createShardEntity(this, enemy.x, enemy.y);
     this.shards.add(shard);
-    
+
     // Remove enemy
     enemy.destroy();
     this.enemiesAlive--;
-    
+
     // Check wave completion
     if (this.enemiesAlive === 0) {
       this.time.delayedCall(WAVE_CONFIG.DELAY_BETWEEN_WAVES, () => {
@@ -470,69 +500,86 @@ export class GameScene extends Phaser.Scene {
       });
     }
   }
-  
+
   private createUI(): void {
     // Health bar above player (follows player in game world - uses main camera)
     const hpBar = UI_CONFIG.HEALTH_BAR;
     this.healthBarBg = this.add.rectangle(0, 0, hpBar.width, hpBar.height, hpBar.backgroundColor);
     this.healthBarFill = this.add.rectangle(0, 0, hpBar.width, hpBar.height, hpBar.healthyColor);
     this.healthBarFill.setOrigin(0, 0.5);
-    
+
+    // Skill cooldown bar (below health bar)
+    const skillBarWidth = 100;
+    const skillBarHeight = 8;
+    this.skillCooldownBg = this.add.rectangle(0, 0, skillBarWidth, skillBarHeight, 0x333333);
+    this.skillCooldownFill = this.add.rectangle(0, 0, skillBarWidth, skillBarHeight, 0x44aaff);
+    this.skillCooldownFill.setOrigin(0, 0.5);
+
+    // Skill name text (above skill bar)
+    const playerClass = this.player.getData('className') as string;
+    const classConfig = CHARACTER_CLASSES[playerClass];
+    this.skillText = this.add.text(0, 0, classConfig.skillName, {
+      fontSize: '14px',
+      color: '#44aaff',
+      fontFamily: 'Arial',
+    });
+    this.skillText.setOrigin(0.5, 1);
+
     // TEMPORARY: Commented out for debugging
     // Make health bars ignore UI camera (only visible on main camera)
     // this.healthBarBg.setScrollFactor(1);
     // this.healthBarFill.setScrollFactor(1);
     // this.uiCamera.ignore([this.healthBarBg, this.healthBarFill]);
-    
+
     // UI text - using fixed padding from edges for scalability
     const padding = 20;
     const lineHeight = 35;
     const playerHealth = this.player.getData('health') as HealthComponent;
     const textStyle = UI_CONFIG.TEXT;
-    
+
     this.healthText = this.add.text(
       padding,
       padding,
       `HP: ${playerHealth.current}/${playerHealth.max}`,
       { fontSize: textStyle.fontSize, color: textStyle.healthColor, fontFamily: textStyle.fontFamily }
     );
-    
+
     this.shardText = this.add.text(padding, padding + lineHeight, `Shards: ${this.shardCount}`, {
       fontSize: textStyle.fontSize,
       color: textStyle.shardColor,
       fontFamily: textStyle.fontFamily,
     });
-    
+
     this.waveText = this.add.text(padding, padding + lineHeight * 2, `Wave: ${this.currentWave}`, {
       fontSize: textStyle.fontSize,
       color: textStyle.waveColor,
       fontFamily: textStyle.fontFamily,
     });
-    
+
     // Fix UI text to camera so they don't scroll with the game world
     this.healthText.setScrollFactor(0);
     this.shardText.setScrollFactor(0);
     this.waveText.setScrollFactor(0);
-    
+
     // Set depth to ensure UI text is on top
     this.healthText.setDepth(1000);
     this.shardText.setDepth(1000);
     this.waveText.setDepth(1000);
   }
-  
+
   private updateHealthBar(): void {
     const health = this.player.getData('health') as HealthComponent;
     const hpBar = UI_CONFIG.HEALTH_BAR;
-    
-    // Position
+
+    // Position health bar
     const offsetY = this.player.y + hpBar.offsetY;
     this.healthBarBg.setPosition(this.player.x, offsetY);
     this.healthBarFill.setPosition(this.player.x - hpBar.width / 2, offsetY);
-    
+
     // Width
     const healthPercent = health.current / health.max;
     this.healthBarFill.width = hpBar.width * healthPercent;
-    
+
     // Color
     if (healthPercent > hpBar.warningThreshold) {
       this.healthBarFill.setFillStyle(hpBar.healthyColor);
@@ -541,26 +588,45 @@ export class GameScene extends Phaser.Scene {
     } else {
       this.healthBarFill.setFillStyle(hpBar.criticalColor);
     }
-    
+
     this.healthText.setText(`HP: ${health.current}/${health.max}`);
+
+    // Update skill cooldown bar using SkillManager
+    const skillInfo = this.skillManager.getSkillCooldownInfo(this.player, this.time.now);
+    const skillBarWidth = 100;
+    const skillBarOffsetY = this.player.y - 65;
+
+    this.skillCooldownBg.setPosition(this.player.x, skillBarOffsetY);
+    this.skillCooldownFill.setPosition(this.player.x - skillBarWidth / 2, skillBarOffsetY);
+    this.skillCooldownFill.width = skillBarWidth * skillInfo.cooldownPercent;
+
+    // Change color when ready
+    if (skillInfo.isReady) {
+      this.skillCooldownFill.setFillStyle(0x44ff44); // Green when ready
+    } else {
+      this.skillCooldownFill.setFillStyle(0x44aaff); // Blue when on cooldown
+    }
+
+    // Update skill text position
+    this.skillText.setPosition(this.player.x, skillBarOffsetY - 10);
   }
-  
+
   private gameOver(): void {
     console.log(`💀 Game Over! Collected ${this.shardCount} shards`);
-    
+
     // Destroy weapon sprite
     const weaponSpriteComp = this.player.getData('weaponSprite') as WeaponSpriteComponent;
     if (weaponSpriteComp && weaponSpriteComp.sprite) {
       weaponSpriteComp.sprite.destroy();
     }
-    
+
     this.physics.pause();
-    
+
     // Use DISPLAY_CONFIG for centered positioning
     const centerX = DISPLAY_CONFIG.WIDTH / 2;
     const centerY = DISPLAY_CONFIG.HEIGHT / 2;
     const gameOverConfig = UI_CONFIG.GAME_OVER;
-    
+
     const gameOverText = this.add.text(
       centerX,
       centerY + gameOverConfig.title.offsetY,
@@ -575,7 +641,7 @@ export class GameScene extends Phaser.Scene {
     );
     gameOverText.setOrigin(0.5);
     gameOverText.setDepth(2000);
-    
+
     const shardsText = this.add.text(
       centerX,
       centerY + gameOverConfig.shardsDisplay.offsetY,
@@ -591,9 +657,9 @@ export class GameScene extends Phaser.Scene {
     shardsText.setOrigin(0.5);
     shardsText.setScrollFactor(0);
     shardsText.setDepth(2000);
-    
+
     gameOverText.setScrollFactor(0);
-    
+
     // Play Again button - using button factory
     const playAgainButton = createButton(
       this,
@@ -609,7 +675,7 @@ export class GameScene extends Phaser.Scene {
         depth: 2000,
       }
     );
-    
+
     // Menu button - using button factory
     const menuButton = createButton(
       this,
@@ -625,12 +691,12 @@ export class GameScene extends Phaser.Scene {
         depth: 2000,
       }
     );
-    
+
     // Clear focus manager and register game over buttons
     this.focusManager.clear();
     this.focusManager.register(playAgainButton.text);
     this.focusManager.register(menuButton.text);
-    
+
     // Hint text
     const hintText = this.add.text(
       centerX,
@@ -646,7 +712,7 @@ export class GameScene extends Phaser.Scene {
     hintText.setScrollFactor(0);
     hintText.setDepth(2000);
   }
-  
+
   private togglePause(): void {
     if (this.gameManager.isPaused()) {
       this.resumeGame();
@@ -654,31 +720,31 @@ export class GameScene extends Phaser.Scene {
       this.pauseGame();
     }
   }
-  
+
   private pauseGame(): void {
     // Don't allow pause if game over
     const playerHealth = this.player.getData('health') as HealthComponent;
     if (this.healthSystem.isDead(playerHealth)) {
       return;
     }
-    
+
     this.gameManager.pause();
     this.physics.pause();
-    
+
     this.showPauseMenu();
   }
-  
+
   private resumeGame(): void {
     this.gameManager.resume();
     this.physics.resume();
-    
+
     this.hidePauseMenu();
   }
-  
+
   private showPauseMenu(): void {
     const centerX = DISPLAY_CONFIG.WIDTH / 2;
     const centerY = DISPLAY_CONFIG.HEIGHT / 2;
-    
+
     // Semi-transparent overlay
     this.pauseOverlay = this.add.rectangle(
       centerX,
@@ -690,7 +756,7 @@ export class GameScene extends Phaser.Scene {
     );
     this.pauseOverlay.setScrollFactor(0);
     this.pauseOverlay.setDepth(1500);
-    
+
     // Title
     this.pauseTitle = this.add.text(
       centerX,
@@ -707,7 +773,7 @@ export class GameScene extends Phaser.Scene {
     this.pauseTitle.setScrollFactor(0);
     this.pauseTitle.setDepth(1600);
     this.pauseTitle.setDepth(1600);
-    
+
     // Resume button - using button factory
     this.pauseResumeButton = createButton(
       this,
@@ -722,7 +788,7 @@ export class GameScene extends Phaser.Scene {
         depth: 1600,
       }
     );
-    
+
     // Menu button - using button factory
     this.pauseMenuButton = createButton(
       this,
@@ -740,7 +806,7 @@ export class GameScene extends Phaser.Scene {
         depth: 1600,
       }
     );
-    
+
     // TEMPORARY: Commented out for debugging
     // Make pause menu ignore main camera (only visible on UI camera)
     /*
@@ -753,13 +819,13 @@ export class GameScene extends Phaser.Scene {
       this.pauseMenuButton.text
     ]);
     */
-    
+
     // Register with focus manager (auto-focus will handle first focus)
     this.focusManager.clear();
     this.focusManager.register(this.pauseResumeButton.text);
     this.focusManager.register(this.pauseMenuButton.text);
   }
-  
+
   private hidePauseMenu(): void {
     // Destroy all pause menu UI elements
     if (this.pauseOverlay) {
@@ -778,28 +844,28 @@ export class GameScene extends Phaser.Scene {
       this.pauseMenuButton.destroy();
       this.pauseMenuButton = null;
     }
-    
+
     // Clear focus manager (will be re-registered if game over screen shows)
     this.focusManager.clear();
   }
-  
+
   private createTilingBackground(): void {
     // Create a simple grid pattern texture for the background
     const tileSize = WORLD_CONFIG.TILE_SIZE;
     const graphics = this.add.graphics();
-    
+
     // Fill with base color
     graphics.fillStyle(parseInt(WORLD_CONFIG.BACKGROUND_COLOR.replace('#', '0x')), 1);
     graphics.fillRect(0, 0, tileSize, tileSize);
-    
+
     // Add grid lines for visual reference
     graphics.lineStyle(1, 0x2a2a3e, 0.3);
     graphics.strokeRect(0, 0, tileSize, tileSize);
-    
+
     // Generate texture from graphics
     graphics.generateTexture('backgroundTile', tileSize, tileSize);
     graphics.destroy();
-    
+
     // Create tiling sprite that covers the entire world
     const tilingBg = this.add.tileSprite(
       0,
@@ -810,12 +876,12 @@ export class GameScene extends Phaser.Scene {
     );
     tilingBg.setOrigin(0, 0);
     tilingBg.setDepth(-1); // Behind everything else
-    
+
     // TEMPORARY: Commented out for debugging
     // Make UI camera ignore the background (it's a game world object)
     // this.uiCamera.ignore(tilingBg);
   }
-  
+
   private createPlaceholderGraphics(): void {
     // Player
     const playerGraphics = this.make.graphics({ x: 0, y: 0 });
@@ -823,28 +889,28 @@ export class GameScene extends Phaser.Scene {
     playerGraphics.fillRect(0, 0, 32, 32);
     playerGraphics.generateTexture('player', 32, 32);
     playerGraphics.destroy();
-    
+
     // Pistol (small rectangle representing the gun)
     const pistolGraphics = this.make.graphics({ x: 0, y: 0 });
     pistolGraphics.fillStyle(0x666666, 1); // Dark gray
     pistolGraphics.fillRect(0, 0, 16, 8); // Rectangular pistol shape
     pistolGraphics.generateTexture('pistol', 16, 8);
     pistolGraphics.destroy();
-    
+
     // Bullet
     const bulletGraphics = this.make.graphics({ x: 0, y: 0 });
     bulletGraphics.fillStyle(0xffeb3b, 1);
     bulletGraphics.fillCircle(4, 4, 4);
     bulletGraphics.generateTexture('bullet', 8, 8);
     bulletGraphics.destroy();
-    
+
     // Enemy
     const enemyGraphics = this.make.graphics({ x: 0, y: 0 });
     enemyGraphics.fillStyle(0xf44336, 1);
     enemyGraphics.fillCircle(16, 16, 16);
     enemyGraphics.generateTexture('enemy', 32, 32);
     enemyGraphics.destroy();
-    
+
     // Shard
     const shardGraphics = this.make.graphics({ x: 0, y: 0 });
     shardGraphics.fillStyle(0x4caf50, 1);

@@ -73,7 +73,7 @@ export const WEAPONS: Record<string, WeaponConfig> = {
     specialEffect: 'spread',
     spreadAngle: Math.PI / 12, // 15 degree spread
   },
-  
+
   // Unlockable Weapons
   HEAVY_CROSSBOW: {
     name: 'Heavy Crossbow',
@@ -111,7 +111,7 @@ export const WEAPONS: Record<string, WeaponConfig> = {
     specialEffect: 'explosive_aoe',
     explosionRadius: 200, // 200px explosion radius
   },
-  
+
   // Legacy weapon for testing (can be removed later)
   PISTOL: {
     name: 'Pistol',
@@ -171,6 +171,53 @@ export const CHARACTER_CLASSES: Record<string, CharacterClass> = {
     description: 'High mobility assassin with evasion',
     skillName: 'Phantom Barrier',
     skillDescription: 'Absorb next 100 damage, lasts 6 seconds',
+  },
+} as const;
+
+// ===== SKILLS =====
+export type SkillType = 'BATTLE_DASH' | 'ARCANE_NOVA' | 'PHANTOM_BARRIER';
+
+export interface SkillConfig {
+  name: string;
+  type: SkillType;
+  cooldown: number; // ms
+  description: string;
+  // Skill-specific parameters
+  damage?: number;
+  radius?: number;
+  distance?: number;
+  duration?: number;
+  absorb?: number;
+  knockbackForce?: number;
+  invincibilityDuration?: number;
+}
+
+export const SKILLS: Record<SkillType, SkillConfig> = {
+  BATTLE_DASH: {
+    name: 'Battle Dash',
+    type: 'BATTLE_DASH',
+    cooldown: 5000, // 5 seconds
+    description: 'Dash forward, invincible during dash, damage enemies',
+    damage: 20,
+    distance: 200, // pixels
+    invincibilityDuration: 500, // 0.5s
+  },
+  ARCANE_NOVA: {
+    name: 'Arcane Nova',
+    type: 'ARCANE_NOVA',
+    cooldown: 8000, // 8 seconds
+    description: 'AOE explosion that damages and knocks back enemies',
+    damage: 150,
+    radius: 300, // pixels
+    knockbackForce: 300,
+  },
+  PHANTOM_BARRIER: {
+    name: 'Phantom Barrier',
+    type: 'PHANTOM_BARRIER',
+    cooldown: 12000, // 12 seconds (increased from 10 for balance)
+    description: 'Absorbs damage for a duration or until broken',
+    absorb: 100,
+    duration: 6000, // 6 seconds
   },
 } as const;
 
@@ -341,17 +388,17 @@ export const calculatePlayerStats = (
   hasBoots: boolean
 ) => {
   const classData = CHARACTER_CLASSES[className];
-  
+
   let maxHealth = classData.baseHealth;
   if (hasArmor) {
     maxHealth += UPGRADE_CONFIG.ARMOR.healthBonus;
   }
-  
+
   let speed = classData.baseSpeed;
   if (hasBoots) {
     speed *= UPGRADE_CONFIG.BOOTS.speedMultiplier;
   }
-  
+
   return {
     maxHealth: Math.round(maxHealth),
     speed: Math.round(speed),
