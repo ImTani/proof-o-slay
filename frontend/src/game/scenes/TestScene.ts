@@ -14,7 +14,7 @@ import type { WeaponSpriteComponent } from '../components/WeaponSpriteComponent'
 import type { ProjectileComponent } from '../components/ProjectileComponent';
 import type { HealthComponent } from '../components/HealthComponent';
 import type { AIComponent } from '../components/AIComponent';
-import { WEAPONS, DISPLAY_CONFIG, PLAYER_CONFIG, CHARACTER_CLASSES } from '../config/GameConfig';
+import { WEAPONS, DISPLAY_CONFIG, PLAYER_CONFIG, UI_LAYOUT_CONFIG, CHARACTER_CLASSES } from '../config/GameConfig';
 
 /**
  * Test Scene - Weapon testing arena with static dummies and weapon pickups
@@ -622,7 +622,7 @@ export class TestScene extends Phaser.Scene {
       }
     );
     this.instructionText.setScrollFactor(0);
-    this.instructionText.setDepth(1000);
+    this.instructionText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
 
     // Current weapon display
     const currentWeapon = this.player.getData('weapon') as WeaponComponent;
@@ -636,7 +636,7 @@ export class TestScene extends Phaser.Scene {
       }
     );
     this.weaponText.setScrollFactor(0);
-    this.weaponText.setDepth(1000);
+    this.weaponText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
 
     // Current skill display
     const skillInfo = this.skillManager.getSkillCooldownInfo(this.player, this.time.now);
@@ -650,7 +650,7 @@ export class TestScene extends Phaser.Scene {
       }
     );
     this.currentSkillText.setScrollFactor(0);
-    this.currentSkillText.setDepth(1000);
+    this.currentSkillText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
 
     // Health display
     const playerHealth = this.player.getData('health') as HealthComponent;
@@ -664,7 +664,7 @@ export class TestScene extends Phaser.Scene {
       }
     );
     this.healthText.setScrollFactor(0);
-    this.healthText.setDepth(1000);
+    this.healthText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
 
     // Skill display
     const currentClassName = this.player.getData('className') as string;
@@ -679,16 +679,16 @@ export class TestScene extends Phaser.Scene {
       }
     );
     this.skillText.setScrollFactor(0);
-    this.skillText.setDepth(1000);
+    this.skillText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
 
     // Health bar above player
-    this.healthBarBg = this.add.rectangle(0, 0, 100, 10, 0x222222);
-    this.healthBarFill = this.add.rectangle(0, 0, 100, 10, 0x4caf50);
+    this.healthBarBg = this.add.rectangle(0, 0, UI_LAYOUT_CONFIG.SKILL_BAR.WIDTH, 10, 0x222222);
+    this.healthBarFill = this.add.rectangle(0, 0, UI_LAYOUT_CONFIG.SKILL_BAR.WIDTH, 10, 0x4caf50);
     this.healthBarFill.setOrigin(0, 0.5);
 
     // Skill cooldown bar
-    this.skillCooldownBg = this.add.rectangle(0, 0, 100, 8, 0x333333);
-    this.skillCooldownFill = this.add.rectangle(0, 0, 100, 8, 0x44aaff);
+    this.skillCooldownBg = this.add.rectangle(0, 0, UI_LAYOUT_CONFIG.SKILL_BAR.WIDTH, 8, 0x333333);
+    this.skillCooldownFill = this.add.rectangle(0, 0, UI_LAYOUT_CONFIG.SKILL_BAR.WIDTH, 8, 0x44aaff);
     this.skillCooldownFill.setOrigin(0, 0.5);
 
     // ESC to return
@@ -815,10 +815,10 @@ export class TestScene extends Phaser.Scene {
     }
 
     // Update skill cooldown bar using SkillManager
-    this.skillCooldownBg.setPosition(this.player.x, this.player.y - 65);
-    this.skillCooldownFill.setPosition(this.player.x - 50, this.player.y - 65);
+    this.skillCooldownBg.setPosition(this.player.x, this.player.y - UI_LAYOUT_CONFIG.SKILL_BAR.OFFSET_Y);
+    this.skillCooldownFill.setPosition(this.player.x - UI_LAYOUT_CONFIG.SKILL_BAR.WIDTH / 2, this.player.y - UI_LAYOUT_CONFIG.SKILL_BAR.OFFSET_Y);
     const skillInfo = this.skillManager.getSkillCooldownInfo(this.player, time);
-    this.skillCooldownFill.width = 100 * skillInfo.cooldownPercent;
+    this.skillCooldownFill.width = UI_LAYOUT_CONFIG.SKILL_BAR.WIDTH * skillInfo.cooldownPercent;
 
     if (skillInfo.isReady) {
       this.skillCooldownFill.setFillStyle(0x44ff44);

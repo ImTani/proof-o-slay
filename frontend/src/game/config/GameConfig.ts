@@ -377,6 +377,41 @@ export const GRAPHICS_CONFIG = {
   IFRAME_FLASH_INTERVAL: 100,    // Interval between flashes during invincibility (ms)
 } as const;
 
+// ===== UI LAYOUT =====
+export const UI_LAYOUT_CONFIG = {
+  WEAPON_AIM_DISTANCE: 100, // Distance to project aim indicator from player (pixels)
+  SKILL_BAR: {
+    WIDTH: 100, // Width of skill cooldown bar
+    OFFSET_Y: 65, // Distance above player
+    TEXT_OFFSET_Y: 10, // Distance of text above bar
+  },
+  DEPTHS: {
+    GAMEPLAY: 0, // Game world objects
+    HUD: 1000, // HUD elements (health, shards, etc)
+    PAUSE_OVERLAY: 1500, // Pause menu overlay
+    PAUSE_UI: 1600, // Pause menu buttons
+    GAME_OVER: 2000, // Game over screen
+  },
+  GAME_OVER: {
+    BUTTON_OFFSET_X: 150, // Horizontal spacing between buttons
+    BUTTON_OFFSET_Y: 120, // Vertical offset of buttons from center
+    HINT_OFFSET_Y: 200, // Vertical offset of hint text
+  },
+  PAUSE_MENU: {
+    TITLE_OFFSET_Y: -100, // Vertical offset of title from center
+    BUTTON_OFFSET_Y: 20, // Vertical offset of first button from center
+    BUTTON_SPACING: 80, // Vertical spacing between buttons
+  },
+  PADDING: 20, // General UI padding
+  LINE_HEIGHT: 35, // Line height for multi-line text
+  FLASH_DURATION: 300, // Duration for UI flash effects (ms)
+} as const;
+
+// ===== WEAPON SPECIAL EFFECTS =====
+export const WEAPON_EFFECTS_CONFIG = {
+  CONE_PROJECTILE_COUNT: 5, // Number of projectiles in cone weapons
+} as const;
+
 // ===== HELPER FUNCTIONS =====
 
 /**

@@ -9,6 +9,7 @@ import {
   WAVE_CONFIG,
   PLAYER_CONFIG,
   UI_CONFIG,
+  UI_LAYOUT_CONFIG,
   CHARACTER_CLASSES
 } from '../config/GameConfig';
 
@@ -258,8 +259,8 @@ export class GameScene extends Phaser.Scene {
     // Get aim direction from gamepad or mouse
     const aimDir = this.inputSystem.getAimDirection(this.player, pointer);
     if (aimDir) {
-      const targetX = this.player.x + aimDir.x * 100; // Project aim 100 pixels out
-      const targetY = this.player.y + aimDir.y * 100;
+      const targetX = this.player.x + aimDir.x * UI_LAYOUT_CONFIG.WEAPON_AIM_DISTANCE;
+      const targetY = this.player.y + aimDir.y * UI_LAYOUT_CONFIG.WEAPON_AIM_DISTANCE;
       this.weaponSystem.updatePosition(this.player, weaponSpriteComp, targetX, targetY);
 
       // Handle shooting (gamepad or mouse)
@@ -278,7 +279,7 @@ export class GameScene extends Phaser.Scene {
       }
     } else {
       // No aim input - weapon defaults to facing right
-      const defaultTargetX = this.player.x + 100;
+      const defaultTargetX = this.player.x + UI_LAYOUT_CONFIG.WEAPON_AIM_DISTANCE;
       const defaultTargetY = this.player.y;
       this.weaponSystem.updatePosition(this.player, weaponSpriteComp, defaultTargetX, defaultTargetY);
     }
@@ -532,8 +533,8 @@ export class GameScene extends Phaser.Scene {
     // this.uiCamera.ignore([this.healthBarBg, this.healthBarFill]);
 
     // UI text - using fixed padding from edges for scalability
-    const padding = 20;
-    const lineHeight = 35;
+    const padding = UI_LAYOUT_CONFIG.PADDING;
+    const lineHeight = UI_LAYOUT_CONFIG.LINE_HEIGHT;
     const playerHealth = this.player.getData('health') as HealthComponent;
     const textStyle = UI_CONFIG.TEXT;
 
@@ -562,9 +563,9 @@ export class GameScene extends Phaser.Scene {
     this.waveText.setScrollFactor(0);
 
     // Set depth to ensure UI text is on top
-    this.healthText.setDepth(1000);
-    this.shardText.setDepth(1000);
-    this.waveText.setDepth(1000);
+    this.healthText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
+    this.shardText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
+    this.waveText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
   }
 
   private updateHealthBar(): void {
@@ -593,8 +594,8 @@ export class GameScene extends Phaser.Scene {
 
     // Update skill cooldown bar using SkillManager
     const skillInfo = this.skillManager.getSkillCooldownInfo(this.player, this.time.now);
-    const skillBarWidth = 100;
-    const skillBarOffsetY = this.player.y - 65;
+    const skillBarWidth = UI_LAYOUT_CONFIG.SKILL_BAR.WIDTH;
+    const skillBarOffsetY = this.player.y - UI_LAYOUT_CONFIG.SKILL_BAR.OFFSET_Y;
 
     this.skillCooldownBg.setPosition(this.player.x, skillBarOffsetY);
     this.skillCooldownFill.setPosition(this.player.x - skillBarWidth / 2, skillBarOffsetY);
@@ -608,7 +609,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Update skill text position
-    this.skillText.setPosition(this.player.x, skillBarOffsetY - 10);
+    this.skillText.setPosition(this.player.x, skillBarOffsetY - UI_LAYOUT_CONFIG.SKILL_BAR.TEXT_OFFSET_Y);
   }
 
   private gameOver(): void {
@@ -640,7 +641,7 @@ export class GameScene extends Phaser.Scene {
       }
     );
     gameOverText.setOrigin(0.5);
-    gameOverText.setDepth(2000);
+    gameOverText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
 
     const shardsText = this.add.text(
       centerX,
@@ -656,15 +657,15 @@ export class GameScene extends Phaser.Scene {
     );
     shardsText.setOrigin(0.5);
     shardsText.setScrollFactor(0);
-    shardsText.setDepth(2000);
+    shardsText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
 
     gameOverText.setScrollFactor(0);
 
     // Play Again button - using button factory
     const playAgainButton = createButton(
       this,
-      centerX - 150,
-      centerY + 120,
+      centerX - UI_LAYOUT_CONFIG.GAME_OVER.BUTTON_OFFSET_X,
+      centerY + UI_LAYOUT_CONFIG.GAME_OVER.BUTTON_OFFSET_Y,
       'PLAY AGAIN',
       () => this.scene.restart(),
       {
@@ -672,15 +673,15 @@ export class GameScene extends Phaser.Scene {
         fontSize: '28px',
         icon: '▶',
         focusIndex: 0,
-        depth: 2000,
+        depth: UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER,
       }
     );
 
     // Menu button - using button factory
     const menuButton = createButton(
       this,
-      centerX + 150,
-      centerY + 120,
+      centerX + UI_LAYOUT_CONFIG.GAME_OVER.BUTTON_OFFSET_X,
+      centerY + UI_LAYOUT_CONFIG.GAME_OVER.BUTTON_OFFSET_Y,
       'MENU',
       () => this.scene.start('MenuScene'),
       {
@@ -688,7 +689,7 @@ export class GameScene extends Phaser.Scene {
         fontSize: '28px',
         icon: '⬅',
         focusIndex: 1,
-        depth: 2000,
+        depth: UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER,
       }
     );
 
@@ -700,7 +701,7 @@ export class GameScene extends Phaser.Scene {
     // Hint text
     const hintText = this.add.text(
       centerX,
-      centerY + 200,
+      centerY + UI_LAYOUT_CONFIG.GAME_OVER.HINT_OFFSET_Y,
       'Use Arrow Keys / Tab / D-pad to navigate',
       {
         fontSize: '18px',
@@ -710,7 +711,7 @@ export class GameScene extends Phaser.Scene {
     );
     hintText.setOrigin(0.5);
     hintText.setScrollFactor(0);
-    hintText.setDepth(2000);
+    hintText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
   }
 
   private togglePause(): void {
@@ -755,12 +756,12 @@ export class GameScene extends Phaser.Scene {
       0.7
     );
     this.pauseOverlay.setScrollFactor(0);
-    this.pauseOverlay.setDepth(1500);
+    this.pauseOverlay.setDepth(UI_LAYOUT_CONFIG.DEPTHS.PAUSE_OVERLAY);
 
     // Title
     this.pauseTitle = this.add.text(
       centerX,
-      centerY - 100,
+      centerY + UI_LAYOUT_CONFIG.PAUSE_MENU.TITLE_OFFSET_Y,
       'PAUSED',
       {
         fontSize: '64px',
@@ -771,21 +772,20 @@ export class GameScene extends Phaser.Scene {
     );
     this.pauseTitle.setOrigin(0.5);
     this.pauseTitle.setScrollFactor(0);
-    this.pauseTitle.setDepth(1600);
-    this.pauseTitle.setDepth(1600);
+    this.pauseTitle.setDepth(UI_LAYOUT_CONFIG.DEPTHS.PAUSE_UI);
 
     // Resume button - using button factory
     this.pauseResumeButton = createButton(
       this,
       centerX,
-      centerY + 20,
+      centerY + UI_LAYOUT_CONFIG.PAUSE_MENU.BUTTON_OFFSET_Y,
       'RESUME',
       () => this.resumeGame(),
       {
         style: 'success',
         icon: '▶',
         focusIndex: 0,
-        depth: 1600,
+        depth: UI_LAYOUT_CONFIG.DEPTHS.PAUSE_UI,
       }
     );
 
@@ -793,7 +793,7 @@ export class GameScene extends Phaser.Scene {
     this.pauseMenuButton = createButton(
       this,
       centerX,
-      centerY + 100,
+      centerY + UI_LAYOUT_CONFIG.PAUSE_MENU.BUTTON_OFFSET_Y + UI_LAYOUT_CONFIG.PAUSE_MENU.BUTTON_SPACING,
       'MAIN MENU',
       () => {
         this.hidePauseMenu();
@@ -803,7 +803,7 @@ export class GameScene extends Phaser.Scene {
         style: 'secondary',
         icon: '⬅',
         focusIndex: 1,
-        depth: 1600,
+        depth: UI_LAYOUT_CONFIG.DEPTHS.PAUSE_UI,
       }
     );
 

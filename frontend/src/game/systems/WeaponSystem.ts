@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { WeaponSpriteComponent } from '../components/WeaponSpriteComponent';
 import type { WeaponComponent } from '../components/WeaponComponent';
 import { createBulletEntity } from '../entities/BulletEntity';
+import { WEAPON_EFFECTS_CONFIG } from '../config/GameConfig';
 
 /**
  * WeaponSystem - Handles weapon positioning, aiming, and firing
@@ -23,11 +24,11 @@ export class WeaponSystem {
       targetX,
       targetY
     );
-    
+
     // Position weapon sprite offset from entity center toward cursor
     weaponSprite.sprite.x = entity.x + Math.cos(angle) * weaponSprite.offset;
     weaponSprite.sprite.y = entity.y + Math.sin(angle) * weaponSprite.offset;
-    
+
     // Rotate weapon to aim toward cursor
     weaponSprite.sprite.setRotation(angle);
   }
@@ -102,11 +103,11 @@ export class WeaponSystem {
     // Create 3 projectiles in a small arc for melee effect
     const arcSpread = Math.PI / 6; // 30 degrees total spread
     const angles = [angle - arcSpread / 2, angle, angle + arcSpread / 2];
-    
+
     angles.forEach((a) => {
       const offsetX = Math.cos(a) * weapon.weaponOffset;
       const offsetY = Math.sin(a) * weapon.weaponOffset;
-      
+
       createBulletEntity(
         bulletGroup,
         x + offsetX,
@@ -166,7 +167,7 @@ export class WeaponSystem {
   ): void {
     const spread = weapon.spreadAngle || Math.PI / 12;
     const angles = [angle - spread / 2, angle + spread / 2];
-    
+
     angles.forEach((a) => {
       createBulletEntity(
         bulletGroup,
@@ -227,10 +228,10 @@ export class WeaponSystem {
   ): void {
     // Fire 5 projectiles in a cone
     const coneAngle = weapon.coneAngle || Math.PI / 4;
-    const projectileCount = 5;
+    const projectileCount = WEAPON_EFFECTS_CONFIG.CONE_PROJECTILE_COUNT;
     const angleStep = coneAngle / (projectileCount - 1);
     const startAngle = angle - coneAngle / 2;
-    
+
     for (let i = 0; i < projectileCount; i++) {
       const bulletAngle = startAngle + angleStep * i;
       createBulletEntity(
