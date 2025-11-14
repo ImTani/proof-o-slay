@@ -235,6 +235,7 @@ export class TestScene extends Phaser.Scene {
         this,
         x,
         y,
+        this.time.now,
         'SLIME'
       );
 
@@ -419,7 +420,7 @@ export class TestScene extends Phaser.Scene {
                 // Spawn within combat zone bounds
                 const x = 100 + (Math.random() * (DISPLAY_CONFIG.WIDTH - 200));
                 const y = this.COMBAT_ZONE_Y + 100 + (Math.random() * (this.COMBAT_ZONE_HEIGHT - 200));
-                const newEnemy = createEnemyEntity(this, x, y, 'SLIME');
+                const newEnemy = createEnemyEntity(this, x, y, this.time.now, 'SLIME');
                 this.enemies.add(newEnemy);
               }
             });

@@ -229,8 +229,40 @@ export const ENEMY_CONFIG = {
     speed: 40,
     damage: 10,
     color: 0xf44336, // Red
+    dropMultiplier: 1, // 1x shards
+    powerUpDropChance: 0.08, // 8%
   },
-  // Future enemy types can be added here
+  ARCHER: {
+    name: 'Archer',
+    health: 20,
+    speed: 30,
+    damage: 15,
+    color: 0x4caf50, // Green
+    dropMultiplier: 1, // 1x shards
+    powerUpDropChance: 0.06, // 6%
+    projectileSpeed: 200,
+    fireRate: 2000, // 2 seconds between shots
+    keepDistance: 200, // Maintains 200px from player
+  },
+  TANK: {
+    name: 'Tank',
+    health: 200,
+    speed: 25,
+    damage: 25,
+    color: 0x9c27b0, // Purple
+    dropMultiplier: 5, // 5x shards (boss)
+    powerUpDropChance: 0.30, // 30%
+    crossbowDropChance: 0.10, // 10% chance to drop Heavy Crossbow
+    knockbackResistance: 0.8, // Takes 20% of normal knockback
+  },
+} as const;
+
+// ===== SCALING =====
+export const SCALING_CONFIG = {
+  HP_PER_MINUTE: 0.05, // +5% HP per minute
+  DAMAGE_PER_MINUTE: 0.04, // +4% damage per minute
+  SPEED_PER_MINUTE: 0.02, // +2% speed per minute
+  SPAWN_RATE_PER_MINUTE: 0.10, // +10% spawn rate per minute
 } as const;
 
 // ===== WAVE SYSTEM =====

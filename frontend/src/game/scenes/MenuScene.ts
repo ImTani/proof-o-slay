@@ -41,22 +41,22 @@ export class MenuScene extends Phaser.Scene {
     title.setOrigin(0.5);
 
     // Create class cards using entity factory
-    const warriorCard = createClassCard(this, centerX - 500, centerY, 'WARRIOR', 
-      (className) => this.selectClass(className), 
+    const warriorCard = createClassCard(this, centerX - 500, centerY, 'WARRIOR',
+      (className) => this.selectClass(className),
       { focusIndex: 1 }
     );
     this.classCards.set('WARRIOR', warriorCard);
     this.focusManager.register(warriorCard.background);
 
-    const mageCard = createClassCard(this, centerX, centerY, 'MAGE', 
-      (className) => this.selectClass(className), 
+    const mageCard = createClassCard(this, centerX, centerY, 'MAGE',
+      (className) => this.selectClass(className),
       { focusIndex: 2 }
     );
     this.classCards.set('MAGE', mageCard);
     this.focusManager.register(mageCard.background);
 
-    const rogueCard = createClassCard(this, centerX + 500, centerY, 'ROGUE', 
-      (className) => this.selectClass(className), 
+    const rogueCard = createClassCard(this, centerX + 500, centerY, 'ROGUE',
+      (className) => this.selectClass(className),
       { focusIndex: 3 }
     );
     this.classCards.set('ROGUE', rogueCard);
@@ -79,7 +79,7 @@ export class MenuScene extends Phaser.Scene {
 
     // Register with focus manager
     this.focusManager.register(startButton.text);
-    
+
     // Test Weapons button
     const testButton = createButton(
       this,
@@ -130,12 +130,12 @@ export class MenuScene extends Phaser.Scene {
 
   private startGame() {
     console.log(`🎮 Starting game as ${CHARACTER_CLASSES[this.selectedClass].name}`);
-    
+
     // Get game config from registry and update selected class
     const gameConfig = this.registry.get('gameConfig');
     gameConfig.selectedClass = this.selectedClass;
     this.registry.set('gameConfig', gameConfig);
-    
+
     // Transition to game scene
     this.scene.start('GameScene');
   }

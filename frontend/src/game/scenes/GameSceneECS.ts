@@ -23,10 +23,13 @@ import { WeaponSystem } from '../systems/WeaponSystem';
 import { SkillManager } from '../systems/SkillManager';
 import { FocusManager } from '../systems/FocusManager';
 import { GameManager } from '../systems/GameManager';
+import { ScalingSystem } from '../systems/ScalingSystem';
 
 // Entities
 import { createPlayerEntity, type PlayerUpgrades } from '../entities/PlayerEntity';
 import { createEnemyEntity } from '../entities/EnemyEntity';
+import { createArcherEntity } from '../entities/ArcherEntity';
+import { createTankEntity } from '../entities/TankEntity';
 import { createShardEntity } from '../entities/ShardEntity';
 import { createButton, type ButtonEntity } from '../entities/ButtonEntity';
 
@@ -50,6 +53,7 @@ export class GameScene extends Phaser.Scene {
   private weaponSystem!: WeaponSystem;
   private skillManager!: SkillManager;
   private focusManager!: FocusManager;
+  private scalingSystem!: ScalingSystem;
 
   // Cameras
   // Disabling this camera right now, it was breaking things.
@@ -105,6 +109,7 @@ export class GameScene extends Phaser.Scene {
     this.weaponSystem = new WeaponSystem();
     this.skillManager = new SkillManager(this, this.healthSystem);
     this.focusManager = new FocusManager(this);
+    this.scalingSystem = new ScalingSystem();
   }
 
   preload() {
@@ -455,11 +460,34 @@ export class GameScene extends Phaser.Scene {
     this.waveText.setText(`Wave: ${this.currentWave}`);
 
     const enemyCount = WAVE_CONFIG.BASE_ENEMY_COUNT + (this.currentWave * WAVE_CONFIG.ENEMIES_PER_WAVE);
+    const spawnTime = this.time.now;
 
     for (let i = 0; i < enemyCount; i++) {
       const edge = Phaser.Math.Between(0, 3);
       const pos = this.getSpawnPosition(edge);
-      const enemy = createEnemyEntity(this, pos.x, pos.y);
+
+      // Spawn different enemy types with weighted chances
+      // 70% Slime, 20% Archer, 10% Tank
+      const roll = Math.random();
+      let enemy: Phaser.Physics.Arcade.Sprite;
+
+      if (roll < 0.70) {
+        // 70% Slime
+        enemy = createEnemyEntity(this, pos.x, pos.y, spawnTime, 'SLIME');
+      } else if (roll < 0.90) {
+        // 20% Archer
+        enemy = createArcherEntity(this, pos.x, pos.y, spawnTime);
+      } else {
+        // 10% Tank
+        enemy = createTankEntity(this, pos.x, pos.y, spawnTime);
+      }
+
+      // Apply time-based scaling
+      const scaling = enemy.getData('scaling');
+      if (scaling) {
+        this.scalingSystem.applyScaling(enemy, scaling, spawnTime);
+      }
+
       this.enemies.add(enemy);
       this.enemiesAlive++;
     }
