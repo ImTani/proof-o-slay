@@ -82,7 +82,7 @@ export class TestScene extends Phaser.Scene {
     this.movementSystem = new MovementSystem();
     this.weaponSystem = new WeaponSystem();
     this.projectileSystem = new ProjectileSystem();
-    this.aiSystem = new AISystem();
+    this.aiSystem = new AISystem(); // TestScene doesn't have archer enemies
     this.healthSystem = new HealthSystem();
     this.skillManager = new SkillManager(this, this.healthSystem, this.showDamageNumber.bind(this));
 
@@ -785,7 +785,7 @@ export class TestScene extends Phaser.Scene {
 
       if (ai) {
         const targetPos = new Phaser.Math.Vector2(this.player.x, this.player.y);
-        this.aiSystem.update(enemy, ai, targetPos);
+        this.aiSystem.update(enemy, ai, targetPos, time);
       }
     });
 

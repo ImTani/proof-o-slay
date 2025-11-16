@@ -241,6 +241,8 @@ export const ENEMY_CONFIG = {
     dropMultiplier: 1, // 1x shards
     powerUpDropChance: 0.06, // 6%
     projectileSpeed: 200,
+    projectileLifespan: 5000, // 5 seconds
+    projectileTint: 0xff4444, // Red tint for enemy bullets
     fireRate: 2000, // 2 seconds between shots
     keepDistance: 200, // Maintains 200px from player
   },
@@ -265,7 +267,21 @@ export const SCALING_CONFIG = {
   SPAWN_RATE_PER_MINUTE: 0.10, // +10% spawn rate per minute
 } as const;
 
-// ===== WAVE SYSTEM =====
+// ===== INFINITE SPAWN SYSTEM =====
+export const SPAWN_CONFIG = {
+  BASE_SPAWN_INTERVAL: 1500, // ms between spawns (base rate)
+  SPAWN_MARGIN: 100, // pixels outside camera view
+  CULL_DISTANCE: 2000, // pixels from camera to cull enemies
+  MAX_ENEMIES: 500, // maximum enemies alive at once
+  BOSS_INTERVAL: 600000, // 10 minutes in milliseconds
+  ENEMY_WEIGHTS: {
+    SLIME: 0.70, // 70%
+    ARCHER: 0.20, // 20%
+    TANK: 0.10, // 10%
+  },
+} as const;
+
+// ===== WAVE SYSTEM (DEPRECATED - Use SPAWN_CONFIG) =====
 export const WAVE_CONFIG = {
   BASE_ENEMY_COUNT: 5,
   ENEMIES_PER_WAVE: 2, // +2 enemies each wave

@@ -6,7 +6,7 @@ import {
   DISPLAY_CONFIG,
   WORLD_CONFIG,
   CAMERA_CONFIG,
-  WAVE_CONFIG,
+  SPAWN_CONFIG,
   PLAYER_CONFIG,
   UI_CONFIG,
   UI_LAYOUT_CONFIG,
@@ -23,13 +23,10 @@ import { WeaponSystem } from '../systems/WeaponSystem';
 import { SkillManager } from '../systems/SkillManager';
 import { FocusManager } from '../systems/FocusManager';
 import { GameManager } from '../systems/GameManager';
-import { ScalingSystem } from '../systems/ScalingSystem';
+import { SpawnSystem } from '../systems/SpawnSystem';
 
 // Entities
 import { createPlayerEntity, type PlayerUpgrades } from '../entities/PlayerEntity';
-import { createEnemyEntity } from '../entities/EnemyEntity';
-import { createArcherEntity } from '../entities/ArcherEntity';
-import { createTankEntity } from '../entities/TankEntity';
 import { createShardEntity } from '../entities/ShardEntity';
 import { createButton, type ButtonEntity } from '../entities/ButtonEntity';
 
@@ -53,7 +50,7 @@ export class GameScene extends Phaser.Scene {
   private weaponSystem!: WeaponSystem;
   private skillManager!: SkillManager;
   private focusManager!: FocusManager;
-  private scalingSystem!: ScalingSystem;
+  private spawnSystem!: SpawnSystem;
 
   // Cameras
   // Disabling this camera right now, it was breaking things.
@@ -61,14 +58,13 @@ export class GameScene extends Phaser.Scene {
 
   // Entity groups
   private player!: Phaser.Physics.Arcade.Sprite;
-  private bullets!: Phaser.Physics.Arcade.Group;
+  private bullets!: Phaser.Physics.Arcade.Group; // Player bullets
+  private enemyBullets!: Phaser.Physics.Arcade.Group; // Enemy bullets (archer)
   private enemies!: Phaser.Physics.Arcade.Group;
   private shards!: Phaser.Physics.Arcade.Group;
 
   // Game state
   private shardCount = 0;
-  private currentWave = 0;
-  private enemiesAlive = 0;
   private gameManager: GameManager;
 
   // Pause menu UI
@@ -84,7 +80,7 @@ export class GameScene extends Phaser.Scene {
   private healthBarFill!: Phaser.GameObjects.Rectangle;
   private healthText!: Phaser.GameObjects.Text;
   private shardText!: Phaser.GameObjects.Text;
-  private waveText!: Phaser.GameObjects.Text;
+  private enemyCountText!: Phaser.GameObjects.Text;
   private skillCooldownBg!: Phaser.GameObjects.Rectangle;
   private skillCooldownFill!: Phaser.GameObjects.Rectangle;
   private skillText!: Phaser.GameObjects.Text;
@@ -100,16 +96,14 @@ export class GameScene extends Phaser.Scene {
     // Get custom config from registry
     this.gameConfig = this.registry.get('gameConfig');
 
-    // Initialize systems
+    // Initialize systems (AISystem initialized after enemyBullets group created)
     this.inputSystem = new InputSystem(this);
     this.movementSystem = new MovementSystem();
-    this.aiSystem = new AISystem();
     this.healthSystem = new HealthSystem();
     this.projectileSystem = new ProjectileSystem();
     this.weaponSystem = new WeaponSystem();
     this.skillManager = new SkillManager(this, this.healthSystem);
     this.focusManager = new FocusManager(this);
-    this.scalingSystem = new ScalingSystem();
   }
 
   preload() {
@@ -188,8 +182,20 @@ export class GameScene extends Phaser.Scene {
       runChildUpdate: false,
     });
 
+    this.enemyBullets = this.physics.add.group({
+      defaultKey: 'bullet',
+      maxSize: -1, // Unlimited pool size
+      runChildUpdate: false,
+    });
+
     this.enemies = this.physics.add.group();
     this.shards = this.physics.add.group();
+
+    // Initialize AISystem with enemy bullets group
+    this.aiSystem = new AISystem(this.enemyBullets);
+
+    // Initialize spawn system for infinite enemy spawning
+    this.spawnSystem = new SpawnSystem(this, this.enemies);
 
     // Make UI camera ignore game object groups (all children will inherit this)
     // Note: We can't directly ignore groups, but we'll need to ignore individual sprites as they're created
@@ -216,8 +222,7 @@ export class GameScene extends Phaser.Scene {
     this.pauseResumeButton = null;
     this.pauseMenuButton = null;
 
-    // Start first wave
-    this.startNextWave();
+    // Spawn system will start automatically in update loop
   }
 
   update(time: number, delta: number) {
@@ -250,6 +255,10 @@ export class GameScene extends Phaser.Scene {
 
     // Update skill state via SkillManager
     this.skillManager.update(this.player, time);
+
+    // Update spawn system (spawns enemies, culls distant ones)
+    const enemyCount = this.spawnSystem.update(time);
+    this.enemyCountText.setText(`Enemies: ${enemyCount}`);
 
     // Handle skill activation (Spacebar or gamepad)
     if (Phaser.Input.Keyboard.JustDown(this.spaceKey) || this.inputSystem.isSkillPressed()) {
@@ -405,6 +414,62 @@ export class GameScene extends Phaser.Scene {
       this
     );
 
+    // Enemy bullets hit player
+    this.physics.add.overlap(
+      this.player,
+      this.enemyBullets,
+      (_, bullet) => {
+        const bulletSprite = bullet as Phaser.Physics.Arcade.Sprite;
+        const playerHealth = this.player.getData('health') as HealthComponent;
+        const projectile = bulletSprite.getData('projectile') as ProjectileComponent;
+
+        // Check if player is invincible
+        const currentTime = Date.now();
+        if (playerHealth.isInvincible && currentTime < playerHealth.invincibilityEndTime) {
+          return; // Skip damage if invincible
+        }
+
+        // Check if player has Battle Dash invincibility active
+        if (this.player.getData('invincible') === true) {
+          return; // Skip damage during dash
+        }
+
+        let damage = projectile.damage;
+
+        // Apply barrier absorption if active
+        damage = this.skillManager.handleBarrierDamage(this.player, damage, currentTime);
+
+        // Apply damage (if any remains after barrier)
+        if (damage > 0) {
+          const isDead = this.healthSystem.takeDamage(
+            this.player,
+            playerHealth,
+            damage,
+            this,
+            currentTime
+          );
+
+          // Activate iframes
+          this.healthSystem.activateInvincibility(
+            this.player,
+            playerHealth,
+            PLAYER_CONFIG.INVINCIBILITY_DURATION,
+            this,
+            currentTime
+          );
+
+          // Destroy bullet
+          this.projectileSystem.destroyProjectile(bulletSprite);
+
+          if (isDead) {
+            this.gameOver();
+          }
+        }
+      },
+      undefined,
+      this
+    );
+
     // Player collects shard
     this.physics.add.overlap(
       this.player,
@@ -434,13 +499,14 @@ export class GameScene extends Phaser.Scene {
 
   private updateEnemies(): void {
     const playerPos = new Phaser.Math.Vector2(this.player.x, this.player.y);
+    const currentTime = this.time.now;
 
     this.enemies.children.entries.forEach((enemy) => {
       const sprite = enemy as Phaser.Physics.Arcade.Sprite;
       if (!sprite.active || !sprite.body) return;
 
       const ai = sprite.getData('ai') as AIComponent;
-      this.aiSystem.update(sprite, ai, playerPos);
+      this.aiSystem.update(sprite, ai, playerPos, currentTime);
     });
   }
 
@@ -455,79 +521,13 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private startNextWave(): void {
-    this.currentWave++;
-    this.waveText.setText(`Wave: ${this.currentWave}`);
-
-    const enemyCount = WAVE_CONFIG.BASE_ENEMY_COUNT + (this.currentWave * WAVE_CONFIG.ENEMIES_PER_WAVE);
-    const spawnTime = this.time.now;
-
-    for (let i = 0; i < enemyCount; i++) {
-      const edge = Phaser.Math.Between(0, 3);
-      const pos = this.getSpawnPosition(edge);
-
-      // Spawn different enemy types with weighted chances
-      // 70% Slime, 20% Archer, 10% Tank
-      const roll = Math.random();
-      let enemy: Phaser.Physics.Arcade.Sprite;
-
-      if (roll < 0.70) {
-        // 70% Slime
-        enemy = createEnemyEntity(this, pos.x, pos.y, spawnTime, 'SLIME');
-      } else if (roll < 0.90) {
-        // 20% Archer
-        enemy = createArcherEntity(this, pos.x, pos.y, spawnTime);
-      } else {
-        // 10% Tank
-        enemy = createTankEntity(this, pos.x, pos.y, spawnTime);
-      }
-
-      // Apply time-based scaling
-      const scaling = enemy.getData('scaling');
-      if (scaling) {
-        this.scalingSystem.applyScaling(enemy, scaling, spawnTime);
-      }
-
-      this.enemies.add(enemy);
-      this.enemiesAlive++;
-    }
-
-    console.log(`🌊 Wave ${this.currentWave}: ${enemyCount} enemies`);
-  }
-
-  private getSpawnPosition(edge: number): { x: number; y: number } {
-    const margin = WAVE_CONFIG.SPAWN_EDGE_MARGIN;
-    const maxX = WORLD_CONFIG.WIDTH - margin;
-    const maxY = WORLD_CONFIG.HEIGHT - margin;
-
-    switch (edge) {
-      case 0: // Top
-        return { x: Phaser.Math.Between(margin, maxX), y: margin };
-      case 1: // Right
-        return { x: maxX, y: Phaser.Math.Between(margin, maxY) };
-      case 2: // Bottom
-        return { x: Phaser.Math.Between(margin, maxX), y: maxY };
-      case 3: // Left
-      default:
-        return { x: margin, y: Phaser.Math.Between(margin, maxY) };
-    }
-  }
-
   private onEnemyDeath(enemy: Phaser.Physics.Arcade.Sprite): void {
     // Drop shard
     const shard = createShardEntity(this, enemy.x, enemy.y);
     this.shards.add(shard);
 
-    // Remove enemy
+    // Remove enemy (spawn system handles enemy count)
     enemy.destroy();
-    this.enemiesAlive--;
-
-    // Check wave completion
-    if (this.enemiesAlive === 0) {
-      this.time.delayedCall(WAVE_CONFIG.DELAY_BETWEEN_WAVES, () => {
-        this.startNextWave();
-      });
-    }
   }
 
   private createUI(): void {
@@ -579,7 +579,7 @@ export class GameScene extends Phaser.Scene {
       fontFamily: textStyle.fontFamily,
     });
 
-    this.waveText = this.add.text(padding, padding + lineHeight * 2, `Wave: ${this.currentWave}`, {
+    this.enemyCountText = this.add.text(padding, padding + lineHeight * 2, `Enemies: 0`, {
       fontSize: textStyle.fontSize,
       color: textStyle.waveColor,
       fontFamily: textStyle.fontFamily,
@@ -588,12 +588,12 @@ export class GameScene extends Phaser.Scene {
     // Fix UI text to camera so they don't scroll with the game world
     this.healthText.setScrollFactor(0);
     this.shardText.setScrollFactor(0);
-    this.waveText.setScrollFactor(0);
+    this.enemyCountText.setScrollFactor(0);
 
     // Set depth to ensure UI text is on top
     this.healthText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
     this.shardText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
-    this.waveText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
+    this.enemyCountText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
   }
 
   private updateHealthBar(): void {
