@@ -8,13 +8,15 @@ import { ProjectileSystem } from '../systems/ProjectileSystem';
 import { SkillManager } from '../systems/SkillManager';
 import { AISystem } from '../systems/AISystem';
 import { HealthSystem } from '../systems/HealthSystem';
+import { PowerUpManager } from '../systems/PowerUpSystem';
 import type { MovementComponent } from '../components/MovementComponent';
 import type { WeaponComponent } from '../components/WeaponComponent';
 import type { WeaponSpriteComponent } from '../components/WeaponSpriteComponent';
 import type { ProjectileComponent } from '../components/ProjectileComponent';
 import type { HealthComponent } from '../components/HealthComponent';
 import type { AIComponent } from '../components/AIComponent';
-import { WEAPONS, DISPLAY_CONFIG, PLAYER_CONFIG, UI_LAYOUT_CONFIG, CHARACTER_CLASSES } from '../config/GameConfig';
+import { WEAPONS, DISPLAY_CONFIG, PLAYER_CONFIG, UI_LAYOUT_CONFIG, CHARACTER_CLASSES, POWERUP_CONFIG } from '../config/GameConfig';
+import { createPowerUpEntity } from '../entities/PowerUpEntity';
 
 /**
  * Test Scene - Weapon testing arena with static dummies and weapon pickups
@@ -25,6 +27,7 @@ export class TestScene extends Phaser.Scene {
   private enemies!: Phaser.Physics.Arcade.Group;
   private weaponPickups!: Phaser.Physics.Arcade.Group;
   private skillPickups!: Phaser.Physics.Arcade.Group;
+  private powerUpPickups!: Phaser.Physics.Arcade.Group;
   private bullets!: Phaser.Physics.Arcade.Group;
 
   // Systems
@@ -35,6 +38,7 @@ export class TestScene extends Phaser.Scene {
   private skillManager!: SkillManager;
   private aiSystem!: AISystem;
   private healthSystem!: HealthSystem;
+  private powerUpManager!: PowerUpManager;
 
   // UI
   private instructionText!: Phaser.GameObjects.Text;
@@ -47,6 +51,7 @@ export class TestScene extends Phaser.Scene {
   private skillCooldownBg!: Phaser.GameObjects.Rectangle;
   private skillCooldownFill!: Phaser.GameObjects.Rectangle;
   private combatZoneLabel!: Phaser.GameObjects.Text;
+  private powerUpIcons: Map<string, { icon: Phaser.GameObjects.Rectangle; timer: Phaser.GameObjects.Text }> = new Map();
 
   // Spacebar for skills
   private spaceKey!: Phaser.Input.Keyboard.Key;
@@ -85,6 +90,7 @@ export class TestScene extends Phaser.Scene {
     this.aiSystem = new AISystem(); // TestScene doesn't have archer enemies
     this.healthSystem = new HealthSystem();
     this.skillManager = new SkillManager(this, this.healthSystem, this.showDamageNumber.bind(this));
+    this.powerUpManager = new PowerUpManager(this);
 
     // Create player
     this.player = createPlayerEntity(
@@ -114,6 +120,9 @@ export class TestScene extends Phaser.Scene {
 
     // Create skill pickups
     this.createSkillPickups();
+
+    // Create power-up pickups
+    this.createPowerUpPickups();
 
     // Draw combat zone indicator
     this.createCombatZone();
@@ -348,6 +357,32 @@ export class TestScene extends Phaser.Scene {
     });
   }
 
+  private createPowerUpPickups(): void {
+    this.powerUpPickups = this.physics.add.group();
+
+    // Power-ups arranged vertically on the right side
+    const powerUpTypes = Object.keys(POWERUP_CONFIG) as Array<keyof typeof POWERUP_CONFIG>;
+
+    powerUpTypes.forEach((type, index) => {
+      const config = POWERUP_CONFIG[type];
+      const y = 200 + index * 120;
+
+      const pickup = createPowerUpEntity(this, DISPLAY_CONFIG.WIDTH - 150, y, type);
+      this.powerUpPickups.add(pickup);
+
+      // Add power-up label
+      const label = this.add.text(DISPLAY_CONFIG.WIDTH - 150, y + 35, config.name, {
+        fontSize: '16px',
+        color: '#ffffff',
+        fontStyle: 'bold',
+        stroke: '#000000',
+        strokeThickness: 3,
+      });
+      label.setOrigin(0.5);
+      pickup.setData('label', label);
+    });
+  }
+
   private setupCollisions(): void {
     // Bullets hit dummies
     this.physics.add.overlap(
@@ -466,6 +501,9 @@ export class TestScene extends Phaser.Scene {
         // Apply barrier absorption if active (via SkillManager)
         damage = this.skillManager.handleBarrierDamage(this.player, damage, currentTime);
 
+        // Apply shield power-up absorption
+        damage = this.powerUpManager.applyShieldDamage(this.player, damage);
+
         // Apply damage
         if (damage > 0) {
           this.healthSystem.takeDamage(this.player, playerHealth, damage, this, currentTime);
@@ -580,6 +618,30 @@ export class TestScene extends Phaser.Scene {
         });
 
         console.log(`✨ Switched to ${skillName} skill`);
+      },
+      undefined,
+      this
+    );
+
+    // Player collects power-up
+    this.physics.add.overlap(
+      this.player,
+      this.powerUpPickups,
+      (_, powerUpObj) => {
+        const pickup = powerUpObj as Phaser.Physics.Arcade.Sprite;
+        const powerUpType = pickup.getData('powerUpType');
+
+        // Activate power-up on player
+        this.powerUpManager.activatePowerUp(this.player, powerUpType);
+
+        // Flash pickup
+        const originalTint = pickup.tintTopLeft;
+        pickup.setTint(0xffffff);
+        this.time.delayedCall(200, () => {
+          pickup.setTint(originalTint);
+        });
+
+        console.log(`✨ Activated ${POWERUP_CONFIG[powerUpType].name} power-up`);
       },
       undefined,
       this
@@ -704,10 +766,20 @@ export class TestScene extends Phaser.Scene {
     const input = this.player.getData('input');
     const playerHealth = this.player.getData('health') as HealthComponent;
 
-    // Update movement
+    // Update movement with power-up speed boost
     const movement = this.player.getData('movement') as MovementComponent;
     this.inputSystem.update(this.player, input, movement);
+
+    const baseSpeed = movement.speed;
+    const speedMultiplier = this.powerUpManager.getSpeedMultiplier(this.player);
+    movement.speed = baseSpeed * speedMultiplier;
+
     this.movementSystem.update(this.player, movement);
+
+    movement.speed = baseSpeed;
+
+    // Update power-ups (remove expired buffs)
+    this.powerUpManager.update(this.player);
 
     // Check if player is in combat zone
     const wasInCombatZone = this.inCombatZone;
@@ -741,6 +813,8 @@ export class TestScene extends Phaser.Scene {
       this.weaponSystem.updatePosition(this.player, weaponSpriteComp, targetX, targetY);
 
       if (this.inputSystem.isFirePressed(pointer)) {
+        const cooldownMultiplier = this.powerUpManager.getCooldownMultiplier(this.player);
+
         this.weaponSystem.tryFire(
           playerWeapon,
           this.bullets,
@@ -749,7 +823,8 @@ export class TestScene extends Phaser.Scene {
           targetX,
           targetY,
           time,
-          damageMultiplier
+          damageMultiplier,
+          cooldownMultiplier
         );
       }
     } else {
@@ -846,6 +921,73 @@ export class TestScene extends Phaser.Scene {
       if (label) {
         label.setPosition(pickup.x, pickup.y + 35);
       }
+    });
+
+    // Update power-up pickup labels
+    this.powerUpPickups.children.entries.forEach((pickupObj) => {
+      const pickup = pickupObj as Phaser.Physics.Arcade.Sprite;
+      const label = pickup.getData('label') as Phaser.GameObjects.Text;
+      if (label) {
+        label.setPosition(pickup.x, pickup.y + 35);
+      }
+    });
+
+    // Update power-up UI
+    this.updatePowerUpUI();
+  }
+
+  private updatePowerUpUI(): void {
+    const activePowerUps = this.powerUpManager.getActivePowerUps(this.player);
+    const config = UI_LAYOUT_CONFIG.POWERUP_DISPLAY;
+
+    // Track which power-ups are currently active
+    const activePowerUpTypes = new Set(activePowerUps.map(p => p.type));
+
+    // Remove UI elements for expired power-ups
+    for (const [type, uiElements] of this.powerUpIcons.entries()) {
+      if (!activePowerUpTypes.has(type as any)) {
+        uiElements.icon.destroy();
+        uiElements.timer.destroy();
+        this.powerUpIcons.delete(type);
+      }
+    }
+
+    // Create or update UI elements for active power-ups
+    activePowerUps.forEach((powerUp, index) => {
+      const typeString = powerUp.type.toString();
+      const powerUpConfig = POWERUP_CONFIG[powerUp.type];
+
+      if (!this.powerUpIcons.has(typeString)) {
+        // Create new icon
+        const x = config.OFFSET_X + index * config.ICON_SPACING;
+        const y = config.OFFSET_Y;
+
+        const icon = this.add.rectangle(x, y, config.ICON_SIZE, config.ICON_SIZE, powerUpConfig.color);
+        icon.setScrollFactor(0);
+        icon.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
+
+        const timer = this.add.text(x, y + config.TIMER_OFFSET_Y, '', {
+          fontSize: config.TIMER_FONT_SIZE,
+          color: '#ffffff',
+          fontFamily: 'Arial',
+        });
+        timer.setOrigin(0.5, 0);
+        timer.setScrollFactor(0);
+        timer.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
+
+        this.powerUpIcons.set(typeString, { icon, timer });
+      }
+
+      // Update timer text
+      const uiElements = this.powerUpIcons.get(typeString)!;
+      const secondsRemaining = Math.ceil(powerUp.timeRemaining / 1000);
+      uiElements.timer.setText(`${secondsRemaining}s`);
+
+      // Update position (in case index changed)
+      const x = config.OFFSET_X + index * config.ICON_SPACING;
+      const y = config.OFFSET_Y;
+      uiElements.icon.setPosition(x, y);
+      uiElements.timer.setPosition(x, y + config.TIMER_OFFSET_Y);
     });
   }
 

@@ -8,6 +8,7 @@ import { createClassComponent, type ClassType } from '../components/ClassCompone
 import { createBattleDashComponent } from '../components/BattleDashComponent';
 import { createArcaneNovaComponent } from '../components/ArcaneNovaComponent';
 import { createPhantomBarrierComponent } from '../components/PhantomBarrierComponent';
+import { createPowerUpComponent } from '../components/PowerUpComponent';
 import { calculatePlayerStats, CHARACTER_CLASSES, type SkillType } from '../config/GameConfig';
 import type { SkillManager } from '../systems/SkillManager';
 
@@ -90,6 +91,7 @@ export const createPlayerEntity = (
   sprite.setData('input', createInputComponent(scene));
   sprite.setData('weaponSprite', createWeaponSpriteComponent(weaponSprite, stats.weapon.weaponOffset));
   sprite.setData('class', createClassComponent(className as ClassType, stats.skillCooldown));
+  sprite.setData('powerUp', createPowerUpComponent()); // Power-up buff tracking
 
   // Attach appropriate skill component based on class and register with manager
   attachSkillComponent(sprite, className, skillManager);

@@ -45,10 +45,12 @@ export class WeaponSystem {
     targetX: number,
     targetY: number,
     currentTime: number,
-    damageMultiplier: number = 1.0
+    damageMultiplier: number = 1.0,
+    cooldownMultiplier: number = 1.0
   ): boolean {
-    // Check fire rate cooldown
-    if (currentTime - weapon.lastShotTime < weapon.fireRate) {
+    // Check fire rate cooldown (apply cooldown multiplier)
+    const effectiveFireRate = weapon.fireRate * cooldownMultiplier;
+    if (currentTime - weapon.lastShotTime < effectiveFireRate) {
       return false;
     }
 

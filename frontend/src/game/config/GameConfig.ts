@@ -299,6 +299,66 @@ export const COLLECTIBLE_CONFIG = {
   },
 } as const;
 
+// ===== POWER-UPS =====
+export type PowerUpType = 'speed_boost' | 'rapid_fire' | 'shield' | 'magnet' | 'double_shards';
+
+export interface PowerUpConfig {
+  name: string;
+  dropChance: number; // Probability (0-1)
+  duration: number; // ms the buff lasts
+  color: number; // Hex color for visual
+  description: string;
+  // Effect-specific values
+  speedMultiplier?: number;
+  cooldownMultiplier?: number;
+  shieldAmount?: number;
+  magnetRadius?: number;
+  shardMultiplier?: number;
+}
+
+export const POWERUP_CONFIG: Record<PowerUpType, PowerUpConfig> = {
+  speed_boost: {
+    name: 'Speed Boost',
+    dropChance: 0.08, // 8%
+    duration: 15000, // 15 seconds
+    color: 0x00ffff, // Cyan
+    description: '+50% movement speed',
+    speedMultiplier: 1.5, // +50% speed
+  },
+  rapid_fire: {
+    name: 'Rapid Fire',
+    dropChance: 0.06, // 6%
+    duration: 12000, // 12 seconds
+    color: 0xff9800, // Orange
+    description: '-50% weapon cooldowns',
+    cooldownMultiplier: 0.5, // Half cooldown time
+  },
+  shield: {
+    name: 'Shield',
+    dropChance: 0.05, // 5%
+    duration: 20000, // 20 seconds
+    color: 0x2196f3, // Blue
+    description: 'Absorb next 150 damage',
+    shieldAmount: 150, // Damage absorption
+  },
+  magnet: {
+    name: 'Magnet',
+    dropChance: 0.07, // 7%
+    duration: 20000, // 20 seconds
+    color: 0xe91e63, // Pink
+    description: 'Auto-collect shards in 400px radius',
+    magnetRadius: 400, // Auto-collect distance
+  },
+  double_shards: {
+    name: 'Double Shards',
+    dropChance: 0.03, // 3%
+    duration: 25000, // 25 seconds
+    color: 0xffd700, // Gold
+    description: '2x shard drops',
+    shardMultiplier: 2, // 2x shards
+  },
+} as const;
+
 // ===== UPGRADES =====
 export const UPGRADE_CONFIG = {
   ARMOR: {
@@ -432,6 +492,14 @@ export const UI_LAYOUT_CONFIG = {
     WIDTH: 100, // Width of skill cooldown bar
     OFFSET_Y: 65, // Distance above player
     TEXT_OFFSET_Y: 10, // Distance of text above bar
+  },
+  POWERUP_DISPLAY: {
+    ICON_SIZE: 24, // Size of power-up icons
+    ICON_SPACING: 30, // Spacing between icons
+    OFFSET_X: 150, // Horizontal offset from left edge (screen space)
+    OFFSET_Y: 20, // Vertical offset from top edge (screen space)
+    TIMER_FONT_SIZE: '14px',
+    TIMER_OFFSET_Y: 20, // Offset of timer text below icon
   },
   DEPTHS: {
     GAMEPLAY: 0, // Game world objects

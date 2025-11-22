@@ -10,7 +10,8 @@ import {
   PLAYER_CONFIG,
   UI_CONFIG,
   UI_LAYOUT_CONFIG,
-  CHARACTER_CLASSES
+  CHARACTER_CLASSES,
+  POWERUP_CONFIG,
 } from '../config/GameConfig';
 
 // Systems
@@ -24,11 +25,13 @@ import { SkillManager } from '../systems/SkillManager';
 import { FocusManager } from '../systems/FocusManager';
 import { GameManager } from '../systems/GameManager';
 import { SpawnSystem } from '../systems/SpawnSystem';
+import { PowerUpManager } from '../systems/PowerUpSystem';
 
 // Entities
 import { createPlayerEntity, type PlayerUpgrades } from '../entities/PlayerEntity';
 import { createShardEntity } from '../entities/ShardEntity';
 import { createButton, type ButtonEntity } from '../entities/ButtonEntity';
+import { createPowerUpEntity, rollPowerUpDrop } from '../entities/PowerUpEntity';
 
 // Components
 import type { HealthComponent } from '../components/HealthComponent';
@@ -51,6 +54,7 @@ export class GameScene extends Phaser.Scene {
   private skillManager!: SkillManager;
   private focusManager!: FocusManager;
   private spawnSystem!: SpawnSystem;
+  private powerUpManager!: PowerUpManager;
 
   // Cameras
   // Disabling this camera right now, it was breaking things.
@@ -62,6 +66,7 @@ export class GameScene extends Phaser.Scene {
   private enemyBullets!: Phaser.Physics.Arcade.Group; // Enemy bullets (archer)
   private enemies!: Phaser.Physics.Arcade.Group;
   private shards!: Phaser.Physics.Arcade.Group;
+  private powerUps!: Phaser.Physics.Arcade.Group;
 
   // Game state
   private shardCount = 0;
@@ -84,6 +89,7 @@ export class GameScene extends Phaser.Scene {
   private skillCooldownBg!: Phaser.GameObjects.Rectangle;
   private skillCooldownFill!: Phaser.GameObjects.Rectangle;
   private skillText!: Phaser.GameObjects.Text;
+  private powerUpIcons: Map<string, { icon: Phaser.GameObjects.Rectangle; timer: Phaser.GameObjects.Text }> = new Map();
 
   private gameConfig!: GameConfig;
 
@@ -104,6 +110,7 @@ export class GameScene extends Phaser.Scene {
     this.weaponSystem = new WeaponSystem();
     this.skillManager = new SkillManager(this, this.healthSystem);
     this.focusManager = new FocusManager(this);
+    this.powerUpManager = new PowerUpManager(this);
   }
 
   preload() {
@@ -190,6 +197,7 @@ export class GameScene extends Phaser.Scene {
 
     this.enemies = this.physics.add.group();
     this.shards = this.physics.add.group();
+    this.powerUps = this.physics.add.group();
 
     // Initialize AISystem with enemy bullets group
     this.aiSystem = new AISystem(this.enemyBullets);
@@ -251,7 +259,19 @@ export class GameScene extends Phaser.Scene {
     const pointer = this.input.activePointer;
 
     this.inputSystem.update(this.player, playerInput, playerMovement);
+
+    // Apply speed boost power-up to movement
+    const baseSpeed = playerMovement.speed;
+    const speedMultiplier = this.powerUpManager.getSpeedMultiplier(this.player);
+    playerMovement.speed = baseSpeed * speedMultiplier;
+
     this.movementSystem.update(this.player, playerMovement);
+
+    // Restore base speed for next frame (power-up will reapply if still active)
+    playerMovement.speed = baseSpeed;
+
+    // Update power-ups (remove expired buffs)
+    this.powerUpManager.update(this.player);
 
     // Update skill state via SkillManager
     this.skillManager.update(this.player, time);
@@ -279,6 +299,9 @@ export class GameScene extends Phaser.Scene {
 
       // Handle shooting (gamepad or mouse)
       if (this.inputSystem.isFirePressed(pointer)) {
+        // Get cooldown multiplier from power-ups
+        const cooldownMultiplier = this.powerUpManager.getCooldownMultiplier(this.player);
+
         // Fire from weapon sprite position, not player center
         this.weaponSystem.tryFire(
           playerWeapon,
@@ -288,7 +311,8 @@ export class GameScene extends Phaser.Scene {
           targetX,
           targetY,
           time,
-          damageMultiplier
+          damageMultiplier,
+          cooldownMultiplier
         );
       }
     } else {
@@ -304,8 +328,12 @@ export class GameScene extends Phaser.Scene {
     // Update projectiles
     this.updateProjectiles();
 
+    // Update magnet power-up (auto-collect nearby shards)
+    this.updateMagnet();
+
     // Update UI
     this.updateHealthBar();
+    this.updatePowerUpUI();
   }
 
   private setupCollisions(): void {
@@ -375,7 +403,10 @@ export class GameScene extends Phaser.Scene {
         // Apply barrier absorption if active (handled by SkillManager)
         damage = this.skillManager.handleBarrierDamage(this.player, damage, currentTime);
 
-        // Apply damage (if any remains after barrier)
+        // Apply shield power-up absorption
+        damage = this.powerUpManager.applyShieldDamage(this.player, damage);
+
+        // Apply damage (if any remains after barrier and shield)
         if (damage > 0) {
           const isDead = this.healthSystem.takeDamage(
             this.player,
@@ -439,7 +470,10 @@ export class GameScene extends Phaser.Scene {
         // Apply barrier absorption if active
         damage = this.skillManager.handleBarrierDamage(this.player, damage, currentTime);
 
-        // Apply damage (if any remains after barrier)
+        // Apply shield power-up absorption
+        damage = this.powerUpManager.applyShieldDamage(this.player, damage);
+
+        // Apply damage (if any remains after barrier and shield)
         if (damage > 0) {
           const isDead = this.healthSystem.takeDamage(
             this.player,
@@ -478,7 +512,11 @@ export class GameScene extends Phaser.Scene {
         const shardSprite = shard as Phaser.Physics.Arcade.Sprite;
         const collectible = shardSprite.getData('collectible') as CollectibleComponent;
 
-        this.shardCount += collectible.value;
+        // Apply double shard multiplier if active
+        const shardMultiplier = this.powerUpManager.getShardMultiplier(this.player);
+        const shardValue = collectible.value * shardMultiplier;
+
+        this.shardCount += shardValue;
         this.shardText.setText(`Shards: ${this.shardCount}`);
 
         // Visual feedback
@@ -488,6 +526,30 @@ export class GameScene extends Phaser.Scene {
           alpha: 0,
           duration: 300,
           onComplete: () => shardSprite.destroy(),
+        });
+      },
+      undefined,
+      this
+    );
+
+    // Player collects power-up
+    this.physics.add.overlap(
+      this.player,
+      this.powerUps,
+      (_, powerUp) => {
+        const powerUpSprite = powerUp as Phaser.Physics.Arcade.Sprite;
+        const powerUpType = powerUpSprite.getData('powerUpType');
+
+        // Activate power-up on player
+        this.powerUpManager.activatePowerUp(this.player, powerUpType);
+
+        // Visual feedback
+        this.tweens.add({
+          targets: powerUpSprite,
+          scale: 2,
+          alpha: 0,
+          duration: 300,
+          onComplete: () => powerUpSprite.destroy(),
         });
       },
       undefined,
@@ -521,10 +583,53 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  private updateMagnet(): void {
+    const magnetRadius = this.powerUpManager.getMagnetRadius(this.player);
+    if (magnetRadius <= 0) return; // No magnet active
+
+    // Pull shards towards player if within magnet radius
+    this.shards.children.entries.forEach((shard) => {
+      const shardSprite = shard as Phaser.Physics.Arcade.Sprite;
+      if (!shardSprite.active) return;
+
+      const distance = Phaser.Math.Distance.Between(
+        this.player.x,
+        this.player.y,
+        shardSprite.x,
+        shardSprite.y
+      );
+
+      if (distance < magnetRadius) {
+        // Pull shard towards player
+        const angle = Phaser.Math.Angle.Between(
+          shardSprite.x,
+          shardSprite.y,
+          this.player.x,
+          this.player.y
+        );
+        const pullSpeed = 400; // pixels per second
+        shardSprite.setVelocity(
+          Math.cos(angle) * pullSpeed,
+          Math.sin(angle) * pullSpeed
+        );
+      } else {
+        // Reset velocity if outside magnet range
+        shardSprite.setVelocity(0, 0);
+      }
+    });
+  }
+
   private onEnemyDeath(enemy: Phaser.Physics.Arcade.Sprite): void {
     // Drop shard
     const shard = createShardEntity(this, enemy.x, enemy.y);
     this.shards.add(shard);
+
+    // Roll for power-up drop
+    const powerUpType = rollPowerUpDrop();
+    if (powerUpType) {
+      const powerUp = createPowerUpEntity(this, enemy.x, enemy.y, powerUpType);
+      this.powerUps.add(powerUp);
+    }
 
     // Remove enemy (spawn system handles enemy count)
     enemy.destroy();
@@ -594,6 +699,61 @@ export class GameScene extends Phaser.Scene {
     this.healthText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
     this.shardText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
     this.enemyCountText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
+  }
+
+  private updatePowerUpUI(): void {
+    const activePowerUps = this.powerUpManager.getActivePowerUps(this.player);
+    const config = UI_LAYOUT_CONFIG.POWERUP_DISPLAY;
+
+    // Track which power-ups are currently active
+    const activePowerUpTypes = new Set(activePowerUps.map(p => p.type));
+
+    // Remove UI elements for expired power-ups
+    for (const [type, uiElements] of this.powerUpIcons.entries()) {
+      if (!activePowerUpTypes.has(type as any)) {
+        uiElements.icon.destroy();
+        uiElements.timer.destroy();
+        this.powerUpIcons.delete(type);
+      }
+    }
+
+    // Create or update UI elements for active power-ups
+    activePowerUps.forEach((powerUp, index) => {
+      const typeString = powerUp.type.toString();
+      const powerUpConfig = POWERUP_CONFIG[powerUp.type];
+
+      if (!this.powerUpIcons.has(typeString)) {
+        // Create new icon
+        const x = config.OFFSET_X + index * config.ICON_SPACING;
+        const y = config.OFFSET_Y;
+
+        const icon = this.add.rectangle(x, y, config.ICON_SIZE, config.ICON_SIZE, powerUpConfig.color);
+        icon.setScrollFactor(0);
+        icon.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
+
+        const timer = this.add.text(x, y + config.TIMER_OFFSET_Y, '', {
+          fontSize: config.TIMER_FONT_SIZE,
+          color: '#ffffff',
+          fontFamily: 'Arial',
+        });
+        timer.setOrigin(0.5, 0);
+        timer.setScrollFactor(0);
+        timer.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
+
+        this.powerUpIcons.set(typeString, { icon, timer });
+      }
+
+      // Update timer text
+      const uiElements = this.powerUpIcons.get(typeString)!;
+      const secondsRemaining = Math.ceil(powerUp.timeRemaining / 1000);
+      uiElements.timer.setText(`${secondsRemaining}s`);
+
+      // Update position (in case index changed)
+      const x = config.OFFSET_X + index * config.ICON_SPACING;
+      const y = config.OFFSET_Y;
+      uiElements.icon.setPosition(x, y);
+      uiElements.timer.setPosition(x, y + config.TIMER_OFFSET_Y);
+    });
   }
 
   private updateHealthBar(): void {
