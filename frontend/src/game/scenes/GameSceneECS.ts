@@ -6,7 +6,6 @@ import {
   DISPLAY_CONFIG,
   WORLD_CONFIG,
   CAMERA_CONFIG,
-  SPAWN_CONFIG,
   PLAYER_CONFIG,
   UI_CONFIG,
   UI_LAYOUT_CONFIG,
@@ -26,6 +25,8 @@ import { FocusManager } from '../systems/FocusManager';
 import { GameManager } from '../systems/GameManager';
 import { SpawnSystem } from '../systems/SpawnSystem';
 import { PowerUpManager } from '../systems/PowerUpSystem';
+import { EnemyManager } from '../systems/EnemyManager';
+import { EffectManager } from '../systems/EffectManager';
 
 // Entities
 import { createPlayerEntity, type PlayerUpgrades } from '../entities/PlayerEntity';
@@ -55,6 +56,8 @@ export class GameScene extends Phaser.Scene {
   private focusManager!: FocusManager;
   private spawnSystem!: SpawnSystem;
   private powerUpManager!: PowerUpManager;
+  private enemyManager!: EnemyManager;
+  private effectManager!: EffectManager;
 
   // Cameras
   // Disabling this camera right now, it was breaking things.
@@ -111,6 +114,7 @@ export class GameScene extends Phaser.Scene {
     this.skillManager = new SkillManager(this, this.healthSystem);
     this.focusManager = new FocusManager(this);
     this.powerUpManager = new PowerUpManager(this);
+    this.effectManager = new EffectManager(this);
   }
 
   preload() {
@@ -202,8 +206,11 @@ export class GameScene extends Phaser.Scene {
     // Initialize AISystem with enemy bullets group
     this.aiSystem = new AISystem(this.enemyBullets);
 
+    // Initialize enemy manager for pooling and routing
+    this.enemyManager = new EnemyManager(this, this.enemies);
+
     // Initialize spawn system for infinite enemy spawning
-    this.spawnSystem = new SpawnSystem(this, this.enemies);
+    this.spawnSystem = new SpawnSystem(this, this.enemyManager);
 
     // Make UI camera ignore game object groups (all children will inherit this)
     // Note: We can't directly ignore groups, but we'll need to ignore individual sprites as they're created
@@ -371,7 +378,12 @@ export class GameScene extends Phaser.Scene {
           Date.now()
         );
 
+        // Show damage number
+        this.effectManager.showDamageNumber(enemySprite.x, enemySprite.y, projectile.damage);
+
         if (isDead) {
+          // Camera shake and particles on kill
+          this.effectManager.enemyKillShake();
           this.onEnemyDeath(enemySprite);
         }
       },
@@ -415,6 +427,9 @@ export class GameScene extends Phaser.Scene {
             this,
             currentTime
           );
+
+          // Camera shake on player damage
+          this.effectManager.playerHitShake();
 
           // Always activate iframes after taking damage (regardless of death)
           this.healthSystem.activateInvincibility(
@@ -519,6 +534,9 @@ export class GameScene extends Phaser.Scene {
         this.shardCount += shardValue;
         this.shardText.setText(`Shards: ${this.shardCount}`);
 
+        // Particle burst effect
+        this.effectManager.shardPickupBurst(shardSprite.x, shardSprite.y);
+
         // Visual feedback
         this.tweens.add({
           targets: shardSprite,
@@ -542,6 +560,10 @@ export class GameScene extends Phaser.Scene {
 
         // Activate power-up on player
         this.powerUpManager.activatePowerUp(this.player, powerUpType);
+
+        // Particle burst effect - color based on power-up type
+        const particleColor = powerUpSprite.tintTopLeft;
+        this.effectManager.powerUpPickupBurst(powerUpSprite.x, powerUpSprite.y, particleColor);
 
         // Visual feedback
         this.tweens.add({
@@ -620,6 +642,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onEnemyDeath(enemy: Phaser.Physics.Arcade.Sprite): void {
+    // Particle burst on death (color matches enemy)
+    const enemyColor = enemy.tintTopLeft;
+    this.effectManager.enemyDeathBurst(enemy.x, enemy.y, enemyColor);
+
     // Drop shard
     const shard = createShardEntity(this, enemy.x, enemy.y);
     this.shards.add(shard);

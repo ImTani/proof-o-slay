@@ -528,6 +528,67 @@ export const WEAPON_EFFECTS_CONFIG = {
   CONE_PROJECTILE_COUNT: 5, // Number of projectiles in cone weapons
 } as const;
 
+// ===== VISUAL EFFECTS =====
+export const EFFECTS_CONFIG = {
+  // Damage Numbers
+  DAMAGE_NUMBER: {
+    FONT_SIZE: '18px',
+    COLOR: '#ff4444',
+    STROKE_COLOR: '#000000',
+    STROKE_THICKNESS: 3,
+    FLOAT_DISTANCE: 40, // pixels to float upward
+    DURATION: 800, // ms
+  },
+  // Particle Bursts
+  PARTICLES: {
+    SHARD_PICKUP: {
+      COLOR: 0xffeb3b, // Yellow/gold
+      COUNT: 4,
+      RADIUS: 3,
+      SPEED_MIN: 40,
+      SPEED_MAX: 100,
+      DURATION: 400,
+    },
+    POWERUP_PICKUP: {
+      COUNT: 8,
+      RADIUS: 4,
+      SPEED_MIN: 60,
+      SPEED_MAX: 120,
+      DURATION: 500,
+    },
+    ENEMY_DEATH: {
+      COUNT: 12,
+      RADIUS: 3,
+      SPEED_MIN: 80,
+      SPEED_MAX: 180,
+      DURATION: 600,
+    },
+    EXPLOSION: {
+      COLOR: 0xff4400, // Orange-red
+      COUNT: 20,
+      RADIUS: 5,
+      SPEED_MIN: 100,
+      SPEED_MAX: 250,
+      DURATION: 800,
+    },
+  },
+  // Camera Shake
+  CAMERA_SHAKE: {
+    PLAYER_HIT: {
+      INTENSITY: 0.008,
+      DURATION: 150,
+    },
+    ENEMY_KILL: {
+      INTENSITY: 0.002,
+      DURATION: 40,
+    },
+    EXPLOSION: {
+      INTENSITY: 0.012,
+      DURATION: 200,
+    },
+  },
+} as const;
+
 // ===== HELPER FUNCTIONS =====
 
 /**

@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { createPlayerEntity } from '../entities/PlayerEntity';
-import { createEnemyEntity } from '../entities/EnemyEntity';
+import { EnemyManager } from '../systems/EnemyManager';
 import { InputSystem } from '../systems/InputSystem';
 import { MovementSystem } from '../systems/MovementSystem';
 import { WeaponSystem } from '../systems/WeaponSystem';
@@ -39,6 +39,7 @@ export class TestScene extends Phaser.Scene {
   private aiSystem!: AISystem;
   private healthSystem!: HealthSystem;
   private powerUpManager!: PowerUpManager;
+  private enemyManager!: EnemyManager;
 
   // UI
   private instructionText!: Phaser.GameObjects.Text;
@@ -111,6 +112,9 @@ export class TestScene extends Phaser.Scene {
     // Create enemy groups
     this.dummies = this.physics.add.group();
     this.enemies = this.physics.add.group();
+
+    // Initialize enemy manager for pooling
+    this.enemyManager = new EnemyManager(this, this.enemies);
 
     // Create dummy enemies
     this.createDummies();
@@ -240,15 +244,7 @@ export class TestScene extends Phaser.Scene {
       const x = 100 + (Math.random() * (DISPLAY_CONFIG.WIDTH - 200));
       const y = this.COMBAT_ZONE_Y + 100 + (Math.random() * (this.COMBAT_ZONE_HEIGHT - 200));
 
-      const enemy = createEnemyEntity(
-        this,
-        x,
-        y,
-        this.time.now,
-        'SLIME'
-      );
-
-      this.enemies.add(enemy);
+      this.enemyManager.spawnEnemy('SLIME', x, y, this.time.now);
     }
 
     console.log(`🔴 Spawned ${toSpawn} enemies in combat zone`);
@@ -455,8 +451,7 @@ export class TestScene extends Phaser.Scene {
                 // Spawn within combat zone bounds
                 const x = 100 + (Math.random() * (DISPLAY_CONFIG.WIDTH - 200));
                 const y = this.COMBAT_ZONE_Y + 100 + (Math.random() * (this.COMBAT_ZONE_HEIGHT - 200));
-                const newEnemy = createEnemyEntity(this, x, y, this.time.now, 'SLIME');
-                this.enemies.add(newEnemy);
+                this.enemyManager.spawnEnemy('SLIME', x, y, this.time.now);
               }
             });
           }
@@ -641,7 +636,7 @@ export class TestScene extends Phaser.Scene {
           pickup.setTint(originalTint);
         });
 
-        console.log(`✨ Activated ${POWERUP_CONFIG[powerUpType].name} power-up`);
+        console.log(`✨ Activated ${POWERUP_CONFIG[powerUpType as keyof typeof POWERUP_CONFIG].name} power-up`);
       },
       undefined,
       this

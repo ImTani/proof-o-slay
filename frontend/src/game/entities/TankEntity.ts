@@ -5,17 +5,28 @@ import { createScalingComponent } from '../components/ScalingComponent';
 import { ENEMY_CONFIG } from '../config/GameConfig';
 
 /**
- * Tank Entity Factory - Creates mini-boss enemies with high HP
+ * Tank Entity Factory - Creates mini-boss enemies with high HP using object pooling
  * Tanks are slow but devastating and hard to knock back
  */
 export const createTankEntity = (
-    scene: Phaser.Scene,
+    enemyGroup: Phaser.Physics.Arcade.Group,
     x: number,
     y: number,
     spawnTime: number
 ): Phaser.Physics.Arcade.Sprite => {
     const config = ENEMY_CONFIG.TANK;
-    const sprite = scene.physics.add.sprite(x, y, 'enemy');
+
+    // Get enemy from pool (reuses inactive enemies)
+    let sprite = enemyGroup.get(x, y, 'enemy') as Phaser.Physics.Arcade.Sprite;
+
+    // Fallback: create new enemy if pool exhausted
+    if (!sprite) {
+        sprite = enemyGroup.create(x, y, 'enemy') as Phaser.Physics.Arcade.Sprite;
+    }
+
+    // Ensure enemy is active and visible
+    sprite.setActive(true);
+    sprite.setVisible(true);
 
     // Make tank larger to show it's a boss
     sprite.setScale(2.0);

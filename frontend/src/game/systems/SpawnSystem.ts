@@ -1,8 +1,6 @@
 import Phaser from 'phaser';
 import { SPAWN_CONFIG, SCALING_CONFIG } from '../config/GameConfig';
-import { createEnemyEntity } from '../entities/EnemyEntity';
-import { createArcherEntity } from '../entities/ArcherEntity';
-import { createTankEntity } from '../entities/TankEntity';
+import { EnemyManager } from './EnemyManager';
 
 /**
  * SpawnSystem - Perpetual enemy spawning system
@@ -19,11 +17,11 @@ export class SpawnSystem {
     private gameStartTime: number;
     private lastSpawnTime: number;
     private lastBossTime: number;
-    private enemyGroup: Phaser.Physics.Arcade.Group;
+    private enemyManager: EnemyManager;
 
-    constructor(scene: Phaser.Scene, enemyGroup: Phaser.Physics.Arcade.Group) {
+    constructor(scene: Phaser.Scene, enemyManager: EnemyManager) {
         this.scene = scene;
-        this.enemyGroup = enemyGroup;
+        this.enemyManager = enemyManager;
         this.gameStartTime = scene.time.now;
         this.lastSpawnTime = scene.time.now;
         this.lastBossTime = scene.time.now;
@@ -48,7 +46,7 @@ export class SpawnSystem {
         // Check if it's time to spawn a regular enemy
         if (
             currentTime - this.lastSpawnTime >= spawnInterval &&
-            this.enemyGroup.getChildren().length < SPAWN_CONFIG.MAX_ENEMIES
+            this.enemyManager.getActiveCount() < SPAWN_CONFIG.MAX_ENEMIES
         ) {
             this.spawnEnemy(currentTime);
             this.lastSpawnTime = currentTime;
@@ -57,7 +55,7 @@ export class SpawnSystem {
         // Cull distant enemies
         this.cullDistantEnemies();
 
-        return this.enemyGroup.getChildren().length;
+        return this.enemyManager.getActiveCount();
     }
 
     /**
@@ -77,22 +75,7 @@ export class SpawnSystem {
         const pos = this.getOffScreenSpawnPosition();
         const enemyType = this.selectEnemyType();
 
-        let enemy: Phaser.Physics.Arcade.Sprite;
-
-        switch (enemyType) {
-            case 'ARCHER':
-                enemy = createArcherEntity(this.scene, pos.x, pos.y, spawnTime);
-                break;
-            case 'TANK':
-                enemy = createTankEntity(this.scene, pos.x, pos.y, spawnTime);
-                break;
-            case 'SLIME':
-            default:
-                enemy = createEnemyEntity(this.scene, pos.x, pos.y, spawnTime, 'SLIME');
-                break;
-        }
-
-        this.enemyGroup.add(enemy);
+        this.enemyManager.spawnEnemy(enemyType, pos.x, pos.y, spawnTime);
     }
 
     /**
@@ -100,8 +83,7 @@ export class SpawnSystem {
      */
     private spawnBoss(spawnTime: number): void {
         const pos = this.getOffScreenSpawnPosition();
-        const boss = createTankEntity(this.scene, pos.x, pos.y, spawnTime);
-        this.enemyGroup.add(boss);
+        this.enemyManager.spawnEnemy('TANK', pos.x, pos.y, spawnTime);
         console.log(`👹 BOSS TANK spawned at ${Math.floor((spawnTime - this.gameStartTime) / 60000)} minutes!`);
     }
 
@@ -164,25 +146,26 @@ export class SpawnSystem {
     }
 
     /**
-     * Destroy enemies that are too far from camera
+     * Cull enemies that are too far from camera (>2000px)
      */
     private cullDistantEnemies(): void {
         const camera = this.scene.cameras.main;
-        const camCenterX = camera.worldView.x + camera.width / 2;
-        const camCenterY = camera.worldView.y + camera.height / 2;
         const cullDistance = SPAWN_CONFIG.CULL_DISTANCE;
+        const enemyGroup = this.enemyManager.getGroup();
 
-        this.enemyGroup.getChildren().forEach((enemy) => {
-            const sprite = enemy as Phaser.Physics.Arcade.Sprite;
+        enemyGroup.getChildren().forEach((child) => {
+            const enemy = child as Phaser.Physics.Arcade.Sprite;
+            if (!enemy.active) return;
+
             const distance = Phaser.Math.Distance.Between(
-                sprite.x,
-                sprite.y,
-                camCenterX,
-                camCenterY
+                enemy.x,
+                enemy.y,
+                camera.worldView.centerX,
+                camera.worldView.centerY
             );
 
             if (distance > cullDistance) {
-                sprite.destroy();
+                this.enemyManager.despawnEnemy(enemy);
             }
         });
     }
