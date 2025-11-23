@@ -501,8 +501,31 @@ export const UI_LAYOUT_CONFIG = {
     TIMER_FONT_SIZE: '14px',
     TIMER_OFFSET_Y: 20, // Offset of timer text below icon
   },
+  HUD_PANELS: {
+    // Top-left stats panel
+    STATS_PANEL: {
+      X: 20,
+      Y: 20,
+      WIDTH: 260,
+      HEIGHT: 160,
+    },
+    // Top-right gambling panel (when active)
+    GAMBLING_PANEL: {
+      WIDTH: 280,
+      HEIGHT: 140,
+      MARGIN_RIGHT: 20,
+      MARGIN_TOP: 20,
+    },
+    // Bottom-center power-up panel
+    POWERUP_PANEL: {
+      WIDTH: 400,
+      HEIGHT: 80,
+      MARGIN_BOTTOM: 20,
+    },
+  },
   DEPTHS: {
     GAMEPLAY: 0, // Game world objects
+    HUD_BG: 900, // HUD background panels
     HUD: 1000, // HUD elements (health, shards, etc)
     PAUSE_OVERLAY: 1500, // Pause menu overlay
     PAUSE_UI: 1600, // Pause menu buttons
@@ -521,6 +544,99 @@ export const UI_LAYOUT_CONFIG = {
   PADDING: 20, // General UI padding
   LINE_HEIGHT: 35, // Line height for multi-line text
   FLASH_DURATION: 300, // Duration for UI flash effects (ms)
+} as const;
+
+// ===== UI STYLING =====
+export const UI_STYLE = {
+  COLORS: {
+    // Primary palette
+    PRIMARY: 0x4287f5,      // Blue
+    SECONDARY: 0x9f7aea,    // Purple
+    SUCCESS: 0x4caf50,      // Green
+    DANGER: 0xf44336,       // Red
+    WARNING: 0xff9800,      // Orange
+    INFO: 0x00bcd4,         // Cyan
+
+    // Neutral colors
+    DARK_BG: 0x0f0f1e,      // Very dark blue-black
+    PANEL_BG: 0x1a1a2e,     // Dark blue-gray
+    PANEL_BORDER: 0x2d3748, // Medium gray-blue
+    TEXT_PRIMARY: '#ffffff',
+    TEXT_SECONDARY: '#aaaaaa',
+    TEXT_MUTED: '#666666',
+
+    // UI element colors
+    BUTTON_HOVER: 0x5a9aff,
+    BUTTON_ACTIVE: 0x3a7fdf,
+    FOCUS_HIGHLIGHT: 0xffff00, // Yellow
+
+    // Game-specific colors
+    SHARD_COLOR: 0x4caf50,  // Green
+    XP_COLOR: 0x00bcd4,     // Cyan
+    HEALTH_COLOR: 0xf44336, // Red
+    MANA_COLOR: 0x4287f5,   // Blue
+  },
+
+  PANELS: {
+    // Semi-transparent panel backgrounds
+    OPACITY: 0.85,
+    BORDER_WIDTH: 2,
+    BORDER_RADIUS: 8,
+    PADDING: 16,
+    MARGIN: 12,
+  },
+
+  FONTS: {
+    TITLE: {
+      SIZE: '64px',
+      WEIGHT: 'bold',
+      FAMILY: 'Arial',
+    },
+    HEADING: {
+      SIZE: '32px',
+      WEIGHT: 'bold',
+      FAMILY: 'Arial',
+    },
+    BODY: {
+      SIZE: '18px',
+      WEIGHT: 'normal',
+      FAMILY: 'Arial',
+    },
+    SMALL: {
+      SIZE: '14px',
+      WEIGHT: 'normal',
+      FAMILY: 'Arial',
+    },
+  },
+} as const;
+
+// ===== MENU LAYOUT =====
+export const MENU_LAYOUT = {
+  TITLE: {
+    Y_OFFSET: 80,           // Distance from top
+    ICON_SIZE: '80px',
+    TEXT_SIZE: '72px',
+  },
+
+  CLASS_CARDS: {
+    Y_OFFSET: 0,            // Offset from center (centered vertically)
+    CARD_SPACING: 420,      // Horizontal spacing between cards
+    CARD_WIDTH: 380,
+    CARD_HEIGHT: 500,
+  },
+
+  GAMBLING_PANEL: {
+    WIDTH: 360,
+    HEIGHT: 600,
+    X_OFFSET: -720,         // Left side panel
+    Y_OFFSET: 0,            // Centered vertically
+  },
+
+  BUTTONS: {
+    START_Y: -120,          // Distance from bottom
+    TEST_Y: -50,            // Distance from bottom
+    HINT_Y: -15,            // Distance from bottom
+  },
 } as const;
 
 // ===== WEAPON SPECIAL EFFECTS =====
@@ -589,6 +705,46 @@ export const EFFECTS_CONFIG = {
   },
 } as const;
 
+// ===== GAMBLING SYSTEM =====
+export const GAMBLING_CONFIG = {
+  // Stake amounts (in $SLAY tokens)
+  STAKE_AMOUNTS: [50, 100, 200] as const,
+
+  // Survival goals (in minutes)
+  SURVIVAL_GOALS: [
+    { minutes: 10, label: '10 Minutes', multiplier: 2.0 },
+    { minutes: 15, label: '15 Minutes', multiplier: 2.5 },
+    { minutes: 20, label: '20 Minutes', multiplier: 3.0 },
+  ] as const,
+
+  // Progressive jackpot multipliers (based on time survived)
+  JACKPOT_MULTIPLIERS: [
+    { minSeconds: 0, maxSeconds: 60, multiplier: 1.1, label: '1.1x' },
+    { minSeconds: 60, maxSeconds: 120, multiplier: 1.3, label: '1.3x' },
+    { minSeconds: 120, maxSeconds: 180, multiplier: 1.5, label: '1.5x' },
+    { minSeconds: 180, maxSeconds: 240, multiplier: 1.8, label: '1.8x' },
+    { minSeconds: 240, maxSeconds: 300, multiplier: 2.0, label: '2.0x' },
+    { minSeconds: 300, maxSeconds: 360, multiplier: 2.3, label: '2.3x' },
+    { minSeconds: 360, maxSeconds: 420, multiplier: 2.6, label: '2.6x' },
+    { minSeconds: 420, maxSeconds: 480, multiplier: 2.9, label: '2.9x' },
+    { minSeconds: 480, maxSeconds: 540, multiplier: 3.2, label: '3.2x' },
+    { minSeconds: 540, maxSeconds: Infinity, multiplier: 3.5, label: '3.5x+' },
+  ] as const,
+
+  // Jackpot ticket requirements
+  JACKPOT_TICKET_REQUIRED: true, // Requires jackpot ticket to enter progressive mode
+
+  // UI Colors
+  COLORS: {
+    STAKE_BG: 0x2d3748,
+    STAKE_SELECTED: 0x4299e1,
+    GOAL_BG: 0x2d3748,
+    GOAL_SELECTED: 0x48bb78,
+    PAYOUT_TEXT: 0xf6ad55,
+    JACKPOT_BG: 0x9f7aea,
+  },
+} as const;
+
 // ===== HELPER FUNCTIONS =====
 
 /**
@@ -618,4 +774,22 @@ export const calculatePlayerStats = (
     weapon: WEAPONS[classData.startingWeapon],
     skillCooldown: classData.skillCooldown,
   };
+};
+
+/**
+ * Calculate payout for a successful stake
+ */
+export const calculatePayout = (stakeAmount: number, goalIndex: number): number => {
+  const multiplier = GAMBLING_CONFIG.SURVIVAL_GOALS[goalIndex].multiplier;
+  return Math.floor(stakeAmount * multiplier);
+};
+
+/**
+ * Get current jackpot multiplier based on survival time
+ */
+export const getJackpotMultiplier = (survivalSeconds: number): { multiplier: number; label: string } => {
+  const tier = GAMBLING_CONFIG.JACKPOT_MULTIPLIERS.find(
+    (tier) => survivalSeconds >= tier.minSeconds && survivalSeconds < tier.maxSeconds
+  );
+  return tier ? { multiplier: tier.multiplier, label: tier.label } : { multiplier: 1.0, label: '1.0x' };
 };

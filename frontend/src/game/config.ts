@@ -13,10 +13,20 @@ export interface GameUpgrades {
   hasBoots: boolean;
 }
 
+export interface GamblingState {
+  isActive: boolean;
+  stakeAmount: number;
+  goalMinutes: number;
+  goalMultiplier: number;
+  isJackpotMode: boolean;
+  jackpotTicketsAvailable: number;
+}
+
 export interface GameConfig {
   upgrades: GameUpgrades;
   callbacks: GameCallbacks;
   selectedClass?: keyof typeof CHARACTER_CLASSES; // Selected character class
+  gambling?: GamblingState; // Gambling state (optional)
 }
 
 export const createGameConfig = (gameConfig: GameConfig): Phaser.Types.Core.GameConfig => {

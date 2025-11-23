@@ -9,8 +9,10 @@ import {
   PLAYER_CONFIG,
   UI_CONFIG,
   UI_LAYOUT_CONFIG,
+  UI_STYLE,
   CHARACTER_CLASSES,
   POWERUP_CONFIG,
+  getJackpotMultiplier,
 } from '../config/GameConfig';
 
 // Systems
@@ -75,6 +77,17 @@ export class GameScene extends Phaser.Scene {
   private shardCount = 0;
   private gameManager: GameManager;
 
+  // Gambling state
+  private gamblingActive = false;
+  private stakeAmount = 0;
+  private goalMinutes = 0;
+  private goalMultiplier = 0;
+  private isJackpotMode = false;
+  private gameStartTime = 0;
+  private survivalTimerText!: Phaser.GameObjects.Text;
+  private jackpotMultiplierText!: Phaser.GameObjects.Text;
+  private cKey!: Phaser.Input.Keyboard.Key;
+
   // Pause menu UI
   private pauseOverlay!: Phaser.GameObjects.Rectangle | null;
   private pauseTitle!: Phaser.GameObjects.Text | null;
@@ -104,6 +117,16 @@ export class GameScene extends Phaser.Scene {
   init() {
     // Get custom config from registry
     this.gameConfig = this.registry.get('gameConfig');
+
+    // Initialize gambling state
+    if (this.gameConfig.gambling?.isActive) {
+      this.gamblingActive = true;
+      this.stakeAmount = this.gameConfig.gambling.stakeAmount;
+      this.goalMinutes = this.gameConfig.gambling.goalMinutes;
+      this.goalMultiplier = this.gameConfig.gambling.goalMultiplier;
+      this.isJackpotMode = this.gameConfig.gambling.isJackpotMode;
+      this.gameStartTime = 0; // Will be set in create()
+    }
 
     // Initialize systems (AISystem initialized after enemyBullets group created)
     this.inputSystem = new InputSystem(this);
@@ -231,6 +254,9 @@ export class GameScene extends Phaser.Scene {
     // Set up SPACE key for skills
     this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
+    // Set up C key for jackpot cash-out
+    this.cKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.C);
+
     // Initialize pause menu UI elements (hidden by default)
     this.pauseOverlay = null;
     this.pauseTitle = null;
@@ -285,7 +311,44 @@ export class GameScene extends Phaser.Scene {
 
     // Update spawn system (spawns enemies, culls distant ones)
     const enemyCount = this.spawnSystem.update(time);
-    this.enemyCountText.setText(`Enemies: ${enemyCount}`);
+    this.enemyCountText.setText(`👹 Enemies: ${enemyCount}`);
+
+    // Update gambling timer and check for victory/cash-out
+    if (this.gamblingActive) {
+      // Initialize game start time on first update frame (after scene fully loaded)
+      if (this.gameStartTime === 0) {
+        this.gameStartTime = time;
+      }
+
+      const survivalSeconds = Math.floor((time - this.gameStartTime) / 1000);
+      const minutes = Math.floor(survivalSeconds / 60);
+      const seconds = survivalSeconds % 60;
+      const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+      if (this.isJackpotMode) {
+        // Jackpot mode - show time and current multiplier
+        this.survivalTimerText.setText(`⏱️  Time: ${timeString}`);
+        const jackpotData = getJackpotMultiplier(survivalSeconds);
+        this.jackpotMultiplierText.setText(`💫 Multiplier: ${jackpotData.label}`);
+
+        // Check for cash-out (C key)
+        if (Phaser.Input.Keyboard.JustDown(this.cKey)) {
+          const winnings = Math.floor(this.stakeAmount * jackpotData.multiplier);
+          this.gamblingVictory(survivalSeconds, winnings, true);
+          return;
+        }
+      } else {
+        // Regular bet - show time and check for goal
+        this.survivalTimerText.setText(`⏱️  Time: ${timeString}`);
+
+        // Check if goal reached
+        if (minutes >= this.goalMinutes) {
+          const winnings = Math.floor(this.stakeAmount * this.goalMultiplier);
+          this.gamblingVictory(survivalSeconds, winnings, false);
+          return;
+        }
+      }
+    }
 
     // Handle skill activation (Spacebar or gamepad)
     if (Phaser.Input.Keyboard.JustDown(this.spaceKey) || this.inputSystem.isSkillPressed()) {
@@ -532,7 +595,7 @@ export class GameScene extends Phaser.Scene {
         const shardValue = collectible.value * shardMultiplier;
 
         this.shardCount += shardValue;
-        this.shardText.setText(`Shards: ${this.shardCount}`);
+        this.shardText.setText(`💎 Shards: ${this.shardCount}`);
 
         // Particle burst effect
         this.effectManager.shardPickupBurst(shardSprite.x, shardSprite.y);
@@ -685,38 +748,78 @@ export class GameScene extends Phaser.Scene {
     });
     this.skillText.setOrigin(0.5, 1);
 
-    // TEMPORARY: Commented out for debugging
-    // Make health bars ignore UI camera (only visible on main camera)
-    // this.healthBarBg.setScrollFactor(1);
-    // this.healthBarFill.setScrollFactor(1);
-    // this.uiCamera.ignore([this.healthBarBg, this.healthBarFill]);
+    // === HUD PANELS ===
+    const statsPanel = UI_LAYOUT_CONFIG.HUD_PANELS.STATS_PANEL;
 
-    // UI text - using fixed padding from edges for scalability
-    const padding = UI_LAYOUT_CONFIG.PADDING;
-    const lineHeight = UI_LAYOUT_CONFIG.LINE_HEIGHT;
+    // Top-left stats panel background
+    const statsPanelBg = this.add.rectangle(
+      statsPanel.X,
+      statsPanel.Y,
+      statsPanel.WIDTH,
+      statsPanel.HEIGHT,
+      UI_STYLE.COLORS.PANEL_BG,
+      0.85
+    );
+    statsPanelBg.setOrigin(0, 0);
+    statsPanelBg.setScrollFactor(0);
+    statsPanelBg.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD_BG);
+    statsPanelBg.setStrokeStyle(2, UI_STYLE.COLORS.PANEL_BORDER);
+
+    // Panel header
+    const statsPanelHeader = this.add.rectangle(
+      statsPanel.X,
+      statsPanel.Y,
+      statsPanel.WIDTH,
+      35,
+      UI_STYLE.COLORS.PRIMARY,
+      0.3
+    );
+    statsPanelHeader.setOrigin(0, 0);
+    statsPanelHeader.setScrollFactor(0);
+    statsPanelHeader.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD_BG);
+
+    const statsPanelTitle = this.add.text(
+      statsPanel.X + 12,
+      statsPanel.Y + 8,
+      '⚔️ STATS',
+      {
+        fontSize: '18px',
+        color: UI_STYLE.COLORS.TEXT_PRIMARY,
+        fontFamily: 'Arial',
+        fontStyle: 'bold',
+      }
+    );
+    statsPanelTitle.setScrollFactor(0);
+    statsPanelTitle.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
+
+    // Stats text inside panel
     const playerHealth = this.player.getData('health') as HealthComponent;
     const textStyle = UI_CONFIG.TEXT;
+    const textX = statsPanel.X + 12;
+    let textY = statsPanel.Y + 50;
 
     this.healthText = this.add.text(
-      padding,
-      padding,
-      `HP: ${playerHealth.current}/${playerHealth.max}`,
+      textX,
+      textY,
+      `❤️  HP: ${playerHealth.current}/${playerHealth.max}`,
       { fontSize: textStyle.fontSize, color: textStyle.healthColor, fontFamily: textStyle.fontFamily }
     );
+    textY += 30;
 
-    this.shardText = this.add.text(padding, padding + lineHeight, `Shards: ${this.shardCount}`, {
+    this.shardText = this.add.text(textX, textY, `💎 Shards: ${this.shardCount}`, {
       fontSize: textStyle.fontSize,
       color: textStyle.shardColor,
       fontFamily: textStyle.fontFamily,
     });
+    textY += 30;
 
-    this.enemyCountText = this.add.text(padding, padding + lineHeight * 2, `Enemies: 0`, {
+    this.enemyCountText = this.add.text(textX, textY, `👹 Enemies: 0`, {
       fontSize: textStyle.fontSize,
       color: textStyle.waveColor,
       fontFamily: textStyle.fontFamily,
     });
 
-    // Fix UI text to camera so they don't scroll with the game world
+    // Fix UI text to camera
     this.healthText.setScrollFactor(0);
     this.shardText.setScrollFactor(0);
     this.enemyCountText.setScrollFactor(0);
@@ -725,6 +828,116 @@ export class GameScene extends Phaser.Scene {
     this.healthText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
     this.shardText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
     this.enemyCountText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
+
+    // Gambling UI (if active) - Top-right panel
+    if (this.gamblingActive) {
+      const gamblingPanel = UI_LAYOUT_CONFIG.HUD_PANELS.GAMBLING_PANEL;
+      const panelX = DISPLAY_CONFIG.WIDTH - gamblingPanel.WIDTH - gamblingPanel.MARGIN_RIGHT;
+      const panelY = gamblingPanel.MARGIN_TOP;
+
+      // Gambling panel background
+      const gamblingPanelBg = this.add.rectangle(
+        panelX,
+        panelY,
+        gamblingPanel.WIDTH,
+        gamblingPanel.HEIGHT,
+        UI_STYLE.COLORS.PANEL_BG,
+        0.85
+      );
+      gamblingPanelBg.setOrigin(0, 0);
+      gamblingPanelBg.setScrollFactor(0);
+      gamblingPanelBg.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD_BG);
+      gamblingPanelBg.setStrokeStyle(2, UI_STYLE.COLORS.SECONDARY);
+
+      // Panel header
+      const gamblingPanelHeader = this.add.rectangle(
+        panelX,
+        panelY,
+        gamblingPanel.WIDTH,
+        35,
+        UI_STYLE.COLORS.SECONDARY,
+        0.3
+      );
+      gamblingPanelHeader.setOrigin(0, 0);
+      gamblingPanelHeader.setScrollFactor(0);
+      gamblingPanelHeader.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD_BG);
+
+      const gamblingPanelTitle = this.add.text(
+        panelX + 12,
+        panelY + 8,
+        this.isJackpotMode ? '🎰 JACKPOT MODE' : '💰 GAMBLING',
+        {
+          fontSize: '18px',
+          color: this.isJackpotMode ? '#9f7aea' : '#f6ad55',
+          fontFamily: 'Arial',
+          fontStyle: 'bold',
+        }
+      );
+      gamblingPanelTitle.setScrollFactor(0);
+      gamblingPanelTitle.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
+
+      let gamblingTextY = panelY + 50;
+      const gamblingTextX = panelX + 12;
+
+      if (this.isJackpotMode) {
+        // Jackpot mode - show multiplier and cash-out hint
+        this.survivalTimerText = this.add.text(gamblingTextX, gamblingTextY, '⏱️  Time: 0:00', {
+          fontSize: textStyle.fontSize,
+          color: '#9f7aea',
+          fontFamily: textStyle.fontFamily,
+          fontStyle: 'bold',
+        });
+        gamblingTextY += 30;
+
+        this.jackpotMultiplierText = this.add.text(gamblingTextX, gamblingTextY, '💫 Multiplier: 1.0x', {
+          fontSize: textStyle.fontSize,
+          color: '#f6ad55',
+          fontFamily: textStyle.fontFamily,
+          fontStyle: 'bold',
+        });
+        gamblingTextY += 30;
+
+        const cashOutHint = this.add.text(gamblingTextX, gamblingTextY, '💸 Press C to Cash Out', {
+          fontSize: '14px',
+          color: '#cbd5e0',
+          fontFamily: textStyle.fontFamily,
+        });
+        cashOutHint.setScrollFactor(0);
+        cashOutHint.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
+
+        this.jackpotMultiplierText.setScrollFactor(0);
+        this.jackpotMultiplierText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
+      } else {
+        // Regular bet - show countdown to goal
+        this.survivalTimerText = this.add.text(gamblingTextX, gamblingTextY, `🎯 TARGET: ${this.goalMinutes}:00`, {
+          fontSize: textStyle.fontSize,
+          color: '#48bb78',
+          fontFamily: textStyle.fontFamily,
+          fontStyle: 'bold',
+        });
+        gamblingTextY += 30;
+
+        const stakeInfo = this.add.text(gamblingTextX, gamblingTextY, `💰 Stake: ${this.stakeAmount} $SLAY`, {
+          fontSize: '16px',
+          color: '#f6ad55',
+          fontFamily: textStyle.fontFamily,
+        });
+        stakeInfo.setScrollFactor(0);
+        stakeInfo.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
+        gamblingTextY += 30;
+
+        const payoutInfo = this.add.text(gamblingTextX, gamblingTextY, `💎 Win: ${this.stakeAmount * this.goalMultiplier} $SLAY`, {
+          fontSize: '16px',
+          color: '#4caf50',
+          fontFamily: textStyle.fontFamily,
+        });
+        payoutInfo.setScrollFactor(0);
+        payoutInfo.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
+      }
+
+      this.survivalTimerText.setScrollFactor(0);
+      this.survivalTimerText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
+    }
   }
 
   private updatePowerUpUI(): void {
@@ -804,7 +1017,7 @@ export class GameScene extends Phaser.Scene {
       this.healthBarFill.setFillStyle(hpBar.criticalColor);
     }
 
-    this.healthText.setText(`HP: ${health.current}/${health.max}`);
+    this.healthText.setText(`❤️  HP: ${health.current}/${health.max}`);
 
     // Update skill cooldown bar using SkillManager
     const skillInfo = this.skillManager.getSkillCooldownInfo(this.player, this.time.now);
@@ -827,6 +1040,259 @@ export class GameScene extends Phaser.Scene {
   }
 
   private gameOver(): void {
+    console.log(`💀 Game Over! Collected ${this.shardCount} shards`);
+
+    // If gambling was active and player died before goal, it's a loss
+    if (this.gamblingActive) {
+      this.gamblingDefeat();
+      return;
+    }
+
+    // Regular game over
+    this.showGameOverScreen();
+  }
+
+  private gamblingVictory(survivalSeconds: number, winnings: number, isJackpot: boolean): void {
+    console.log(`🎉 GAMBLING VICTORY! Won ${winnings} $SLAY`);
+
+    // Destroy weapon sprite
+    const weaponSpriteComp = this.player.getData('weaponSprite') as WeaponSpriteComponent;
+    if (weaponSpriteComp && weaponSpriteComp.sprite) {
+      weaponSpriteComp.sprite.destroy();
+    }
+
+    this.physics.pause();
+
+    const centerX = DISPLAY_CONFIG.WIDTH / 2;
+    const centerY = DISPLAY_CONFIG.HEIGHT / 2;
+
+    // Victory title
+    const victoryText = this.add.text(
+      centerX,
+      centerY - 150,
+      isJackpot ? '🎰 JACKPOT CASHED OUT!' : '🎉 BET WON!',
+      {
+        fontSize: '64px',
+        color: '#48bb78',
+        fontFamily: 'Arial',
+        fontStyle: 'bold',
+        stroke: '#000000',
+        strokeThickness: 6,
+      }
+    );
+    victoryText.setOrigin(0.5);
+    victoryText.setScrollFactor(0);
+    victoryText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
+
+    // Survival time
+    const minutes = Math.floor(survivalSeconds / 60);
+    const seconds = survivalSeconds % 60;
+    const timeText = this.add.text(
+      centerX,
+      centerY - 70,
+      `Survived: ${minutes}:${seconds.toString().padStart(2, '0')}`,
+      {
+        fontSize: '32px',
+        color: '#ffffff',
+        fontFamily: 'Arial',
+      }
+    );
+    timeText.setOrigin(0.5);
+    timeText.setScrollFactor(0);
+    timeText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
+
+    // Winnings display
+    const winningsText = this.add.text(
+      centerX,
+      centerY,
+      `Won: ${winnings} $SLAY`,
+      {
+        fontSize: '48px',
+        color: '#f6ad55',
+        fontFamily: 'Arial',
+        fontStyle: 'bold',
+        stroke: '#000000',
+        strokeThickness: 4,
+      }
+    );
+    winningsText.setOrigin(0.5);
+    winningsText.setScrollFactor(0);
+    winningsText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
+
+    // Shards collected
+    const shardsText = this.add.text(
+      centerX,
+      centerY + 60,
+      `Shards: ${this.shardCount}`,
+      {
+        fontSize: '24px',
+        color: '#4299e1',
+        fontFamily: 'Arial',
+      }
+    );
+    shardsText.setOrigin(0.5);
+    shardsText.setScrollFactor(0);
+    shardsText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
+
+    // Buttons
+    const playAgainButton = createButton(
+      this,
+      centerX - 150,
+      centerY + 150,
+      'PLAY AGAIN',
+      () => this.scene.restart(),
+      {
+        style: 'success',
+        fontSize: '28px',
+        icon: '▶',
+        focusIndex: 0,
+        depth: UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER,
+      }
+    );
+
+    const menuButton = createButton(
+      this,
+      centerX + 150,
+      centerY + 150,
+      'MENU',
+      () => this.scene.start('MenuScene'),
+      {
+        style: 'secondary',
+        fontSize: '28px',
+        icon: '⬅',
+        focusIndex: 1,
+        depth: UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER,
+      }
+    );
+
+    this.focusManager.clear();
+    this.focusManager.register(playAgainButton.text);
+    this.focusManager.register(menuButton.text);
+
+    // Trigger callback with shards (winnings will be handled by React in Phase 4)
+    this.gameConfig.callbacks.onGameOver(this.shardCount);
+  }
+
+  private gamblingDefeat(): void {
+    console.log(`💸 GAMBLING DEFEAT! Lost ${this.stakeAmount} $SLAY`);
+
+    // Destroy weapon sprite
+    const weaponSpriteComp = this.player.getData('weaponSprite') as WeaponSpriteComponent;
+    if (weaponSpriteComp && weaponSpriteComp.sprite) {
+      weaponSpriteComp.sprite.destroy();
+    }
+
+    this.physics.pause();
+
+    const centerX = DISPLAY_CONFIG.WIDTH / 2;
+    const centerY = DISPLAY_CONFIG.HEIGHT / 2;
+
+    // Defeat title
+    const defeatText = this.add.text(
+      centerX,
+      centerY - 150,
+      '💸 STAKE LOST',
+      {
+        fontSize: '64px',
+        color: '#f56565',
+        fontFamily: 'Arial',
+        fontStyle: 'bold',
+        stroke: '#000000',
+        strokeThickness: 6,
+      }
+    );
+    defeatText.setOrigin(0.5);
+    defeatText.setScrollFactor(0);
+    defeatText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
+
+    // Loss display
+    const lossText = this.add.text(
+      centerX,
+      centerY - 50,
+      `Lost: ${this.stakeAmount} $SLAY`,
+      {
+        fontSize: '48px',
+        color: '#f6ad55',
+        fontFamily: 'Arial',
+        fontStyle: 'bold',
+        stroke: '#000000',
+        strokeThickness: 4,
+      }
+    );
+    lossText.setOrigin(0.5);
+    lossText.setScrollFactor(0);
+    lossText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
+
+    // Goal reminder
+    const goalText = this.add.text(
+      centerX,
+      centerY + 20,
+      this.isJackpotMode ? 'Died in Jackpot Mode' : `Goal was: ${this.goalMinutes} minutes`,
+      {
+        fontSize: '24px',
+        color: '#cbd5e0',
+        fontFamily: 'Arial',
+      }
+    );
+    goalText.setOrigin(0.5);
+    goalText.setScrollFactor(0);
+    goalText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
+
+    // Shards collected (still keep these)
+    const shardsText = this.add.text(
+      centerX,
+      centerY + 70,
+      `Shards: ${this.shardCount}`,
+      {
+        fontSize: '24px',
+        color: '#4299e1',
+        fontFamily: 'Arial',
+      }
+    );
+    shardsText.setOrigin(0.5);
+    shardsText.setScrollFactor(0);
+    shardsText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
+
+    // Buttons
+    const playAgainButton = createButton(
+      this,
+      centerX - 150,
+      centerY + 150,
+      'TRY AGAIN',
+      () => this.scene.restart(),
+      {
+        style: 'danger',
+        fontSize: '28px',
+        icon: '▶',
+        focusIndex: 0,
+        depth: UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER,
+      }
+    );
+
+    const menuButton = createButton(
+      this,
+      centerX + 150,
+      centerY + 150,
+      'MENU',
+      () => this.scene.start('MenuScene'),
+      {
+        style: 'secondary',
+        fontSize: '28px',
+        icon: '⬅',
+        focusIndex: 1,
+        depth: UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER,
+      }
+    );
+
+    this.focusManager.clear();
+    this.focusManager.register(playAgainButton.text);
+    this.focusManager.register(menuButton.text);
+
+    // Trigger callback with shards (stake loss will be handled by React in Phase 4)
+    this.gameConfig.callbacks.onGameOver(this.shardCount);
+  }
+
+  private showGameOverScreen(): void {
     console.log(`💀 Game Over! Collected ${this.shardCount} shards`);
 
     // Destroy weapon sprite
@@ -966,22 +1432,51 @@ export class GameScene extends Phaser.Scene {
       centerY,
       DISPLAY_CONFIG.WIDTH,
       DISPLAY_CONFIG.HEIGHT,
-      0x000000,
-      0.7
+      UI_STYLE.COLORS.DARK_BG,
+      0.85
     );
     this.pauseOverlay.setScrollFactor(0);
     this.pauseOverlay.setDepth(UI_LAYOUT_CONFIG.DEPTHS.PAUSE_OVERLAY);
 
-    // Title
-    this.pauseTitle = this.add.text(
+    // Pause menu panel
+    const panelWidth = 500;
+    const panelHeight = 400;
+    const pausePanel = this.add.rectangle(
       centerX,
-      centerY + UI_LAYOUT_CONFIG.PAUSE_MENU.TITLE_OFFSET_Y,
-      'PAUSED',
+      centerY,
+      panelWidth,
+      panelHeight,
+      UI_STYLE.COLORS.PANEL_BG,
+      0.95
+    );
+    pausePanel.setScrollFactor(0);
+    pausePanel.setDepth(UI_LAYOUT_CONFIG.DEPTHS.PAUSE_OVERLAY);
+    pausePanel.setStrokeStyle(3, UI_STYLE.COLORS.PRIMARY);
+
+    // Title with icon
+    const titleIcon = this.add.text(
+      centerX,
+      centerY + UI_LAYOUT_CONFIG.PAUSE_MENU.TITLE_OFFSET_Y - 30,
+      '⏸️',
       {
         fontSize: '64px',
-        color: '#ffffff',
+      }
+    );
+    titleIcon.setOrigin(0.5);
+    titleIcon.setScrollFactor(0);
+    titleIcon.setDepth(UI_LAYOUT_CONFIG.DEPTHS.PAUSE_UI);
+
+    this.pauseTitle = this.add.text(
+      centerX,
+      centerY + UI_LAYOUT_CONFIG.PAUSE_MENU.TITLE_OFFSET_Y + 30,
+      'PAUSED',
+      {
+        fontSize: '56px',
+        color: '#4287f5',
         fontFamily: 'Arial',
         fontStyle: 'bold',
+        stroke: '#000000',
+        strokeThickness: 4,
       }
     );
     this.pauseTitle.setOrigin(0.5);
@@ -1020,19 +1515,6 @@ export class GameScene extends Phaser.Scene {
         depth: UI_LAYOUT_CONFIG.DEPTHS.PAUSE_UI,
       }
     );
-
-    // TEMPORARY: Commented out for debugging
-    // Make pause menu ignore main camera (only visible on UI camera)
-    /*
-    this.cameras.main.ignore([
-      this.pauseOverlay, 
-      this.pauseTitle,
-      this.pauseResumeButton.highlight,
-      this.pauseResumeButton.text,
-      this.pauseMenuButton.highlight,
-      this.pauseMenuButton.text
-    ]);
-    */
 
     // Register with focus manager (auto-focus will handle first focus)
     this.focusManager.clear();
