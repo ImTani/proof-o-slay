@@ -12,6 +12,8 @@ import {
   UI_STYLE,
   CHARACTER_CLASSES,
   POWERUP_CONFIG,
+  ENEMY_CONFIG,
+  COLLECTIBLE_CONFIG,
   getJackpotMultiplier,
 } from '../config/GameConfig';
 
@@ -75,6 +77,7 @@ export class GameScene extends Phaser.Scene {
 
   // Game state
   private shardCount = 0;
+  private killCount = 0; // Track total enemy kills
   private gameManager: GameManager;
 
   // Gambling state
@@ -102,6 +105,7 @@ export class GameScene extends Phaser.Scene {
   private healthText!: Phaser.GameObjects.Text;
   private shardText!: Phaser.GameObjects.Text;
   private enemyCountText!: Phaser.GameObjects.Text;
+  private killCountText!: Phaser.GameObjects.Text;
   private skillCooldownBg!: Phaser.GameObjects.Rectangle;
   private skillCooldownFill!: Phaser.GameObjects.Rectangle;
   private skillText!: Phaser.GameObjects.Text;
@@ -313,21 +317,22 @@ export class GameScene extends Phaser.Scene {
     const enemyCount = this.spawnSystem.update(time);
     this.enemyCountText.setText(`👹 Enemies: ${enemyCount}`);
 
-    // Update gambling timer and check for victory/cash-out
+    // Initialize game start time on first update frame (after scene fully loaded)
+    if (this.gameStartTime === 0) {
+      this.gameStartTime = time;
+    }
+
+    // Update survival timer (always shown)
+    const survivalSeconds = Math.floor((time - this.gameStartTime) / 1000);
+    const minutes = Math.floor(survivalSeconds / 60);
+    const seconds = survivalSeconds % 60;
+    const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    this.survivalTimerText.setText(`⏱️  Time: ${timeString}`);
+
+    // Update gambling-specific UI and check for victory/cash-out
     if (this.gamblingActive) {
-      // Initialize game start time on first update frame (after scene fully loaded)
-      if (this.gameStartTime === 0) {
-        this.gameStartTime = time;
-      }
-
-      const survivalSeconds = Math.floor((time - this.gameStartTime) / 1000);
-      const minutes = Math.floor(survivalSeconds / 60);
-      const seconds = survivalSeconds % 60;
-      const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-
       if (this.isJackpotMode) {
-        // Jackpot mode - show time and current multiplier
-        this.survivalTimerText.setText(`⏱️  Time: ${timeString}`);
+        // Jackpot mode - show current multiplier
         const jackpotData = getJackpotMultiplier(survivalSeconds);
         this.jackpotMultiplierText.setText(`💫 Multiplier: ${jackpotData.label}`);
 
@@ -338,10 +343,7 @@ export class GameScene extends Phaser.Scene {
           return;
         }
       } else {
-        // Regular bet - show time and check for goal
-        this.survivalTimerText.setText(`⏱️  Time: ${timeString}`);
-
-        // Check if goal reached
+        // Regular bet - check if goal reached
         if (minutes >= this.goalMinutes) {
           const winnings = Math.floor(this.stakeAmount * this.goalMultiplier);
           this.gamblingVictory(survivalSeconds, winnings, false);
@@ -705,12 +707,28 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onEnemyDeath(enemy: Phaser.Physics.Arcade.Sprite): void {
+    // Increment kill count
+    this.killCount++;
+    this.killCountText.setText(`⚔️  Kills: ${this.killCount}`);
+
     // Particle burst on death (color matches enemy)
     const enemyColor = enemy.tintTopLeft;
     this.effectManager.enemyDeathBurst(enemy.x, enemy.y, enemyColor);
 
-    // Drop shard
-    const shard = createShardEntity(this, enemy.x, enemy.y);
+    // Calculate shard value based on survival time and enemy type
+    const enemyType = enemy.getData('enemyType') as string;
+    const enemyConfig = ENEMY_CONFIG[enemyType.toUpperCase() as keyof typeof ENEMY_CONFIG];
+    const dropMultiplier = enemyConfig?.dropMultiplier || 1;
+
+    // Calculate time-based scaling
+    const survivalMinutes = this.gameStartTime > 0
+      ? (this.time.now - this.gameStartTime) / 60000
+      : 0;
+    const shardScaling = 1 + (COLLECTIBLE_CONFIG.SCALING.shardScalingRate * survivalMinutes);
+    const shardValue = Math.ceil(COLLECTIBLE_CONFIG.SHARD.baseValue * shardScaling * dropMultiplier);
+
+    // Drop shard with calculated value
+    const shard = createShardEntity(this, enemy.x, enemy.y, shardValue);
     this.shards.add(shard);
 
     // Roll for power-up drop
@@ -818,16 +836,36 @@ export class GameScene extends Phaser.Scene {
       color: textStyle.waveColor,
       fontFamily: textStyle.fontFamily,
     });
+    textY += 30;
+
+    // Survival timer (always shown, not just for gambling)
+    this.survivalTimerText = this.add.text(textX, textY, `⏱️  Time: 0:00`, {
+      fontSize: textStyle.fontSize,
+      color: '#90cdf4',
+      fontFamily: textStyle.fontFamily,
+    });
+    textY += 30;
+
+    // Kill count tracker
+    this.killCountText = this.add.text(textX, textY, `⚔️  Kills: 0`, {
+      fontSize: textStyle.fontSize,
+      color: '#fbbf24',
+      fontFamily: textStyle.fontFamily,
+    });
 
     // Fix UI text to camera
     this.healthText.setScrollFactor(0);
     this.shardText.setScrollFactor(0);
     this.enemyCountText.setScrollFactor(0);
+    this.survivalTimerText.setScrollFactor(0);
+    this.killCountText.setScrollFactor(0);
 
     // Set depth to ensure UI text is on top
     this.healthText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
     this.shardText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
     this.enemyCountText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
+    this.survivalTimerText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
+    this.killCountText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
 
     // Gambling UI (if active) - Top-right panel
     if (this.gamblingActive) {
@@ -1184,13 +1222,21 @@ export class GameScene extends Phaser.Scene {
 
     this.physics.pause();
 
+    // Calculate survival time
+    const survivalSeconds = this.gameStartTime > 0
+      ? Math.floor((this.time.now - this.gameStartTime) / 1000)
+      : 0;
+    const minutes = Math.floor(survivalSeconds / 60);
+    const seconds = survivalSeconds % 60;
+    const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
     const centerX = DISPLAY_CONFIG.WIDTH / 2;
     const centerY = DISPLAY_CONFIG.HEIGHT / 2;
 
     // Defeat title
     const defeatText = this.add.text(
       centerX,
-      centerY - 150,
+      centerY - 200,
       '💸 STAKE LOST',
       {
         fontSize: '64px',
@@ -1208,7 +1254,7 @@ export class GameScene extends Phaser.Scene {
     // Loss display
     const lossText = this.add.text(
       centerX,
-      centerY - 50,
+      centerY - 120,
       `Lost: ${this.stakeAmount} $SLAY`,
       {
         fontSize: '48px',
@@ -1226,7 +1272,7 @@ export class GameScene extends Phaser.Scene {
     // Goal reminder
     const goalText = this.add.text(
       centerX,
-      centerY + 20,
+      centerY - 60,
       this.isJackpotMode ? 'Died in Jackpot Mode' : `Goal was: ${this.goalMinutes} minutes`,
       {
         fontSize: '24px',
@@ -1238,13 +1284,43 @@ export class GameScene extends Phaser.Scene {
     goalText.setScrollFactor(0);
     goalText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
 
+    // Survival time
+    const timeText = this.add.text(
+      centerX,
+      centerY + 10,
+      `⏱️  Survived: ${timeString}`,
+      {
+        fontSize: '28px',
+        color: '#90cdf4',
+        fontFamily: 'Arial',
+      }
+    );
+    timeText.setOrigin(0.5);
+    timeText.setScrollFactor(0);
+    timeText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
+
+    // Kill count
+    const killText = this.add.text(
+      centerX,
+      centerY + 50,
+      `⚔️  Kills: ${this.killCount}`,
+      {
+        fontSize: '28px',
+        color: '#fbbf24',
+        fontFamily: 'Arial',
+      }
+    );
+    killText.setOrigin(0.5);
+    killText.setScrollFactor(0);
+    killText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
+
     // Shards collected (still keep these)
     const shardsText = this.add.text(
       centerX,
-      centerY + 70,
-      `Shards: ${this.shardCount}`,
+      centerY + 90,
+      `💎  Shards: ${this.shardCount}`,
       {
-        fontSize: '24px',
+        fontSize: '28px',
         color: '#4299e1',
         fontFamily: 'Arial',
       }
@@ -1303,6 +1379,14 @@ export class GameScene extends Phaser.Scene {
 
     this.physics.pause();
 
+    // Calculate survival time
+    const survivalSeconds = this.gameStartTime > 0
+      ? Math.floor((this.time.now - this.gameStartTime) / 1000)
+      : 0;
+    const minutes = Math.floor(survivalSeconds / 60);
+    const seconds = survivalSeconds % 60;
+    const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
     // Use DISPLAY_CONFIG for centered positioning
     const centerX = DISPLAY_CONFIG.WIDTH / 2;
     const centerY = DISPLAY_CONFIG.HEIGHT / 2;
@@ -1323,10 +1407,44 @@ export class GameScene extends Phaser.Scene {
     gameOverText.setOrigin(0.5);
     gameOverText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
 
+    // Survival time display
+    const timeText = this.add.text(
+      centerX,
+      centerY + gameOverConfig.shardsDisplay.offsetY - 80,
+      `⏱️  Survived: ${timeString}`,
+      {
+        fontSize: '32px',
+        color: '#90cdf4',
+        fontFamily: gameOverConfig.shardsDisplay.fontFamily,
+        stroke: gameOverConfig.shardsDisplay.stroke,
+        strokeThickness: 3,
+      }
+    );
+    timeText.setOrigin(0.5);
+    timeText.setScrollFactor(0);
+    timeText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
+
+    // Kill count display
+    const killText = this.add.text(
+      centerX,
+      centerY + gameOverConfig.shardsDisplay.offsetY - 30,
+      `⚔️  Kills: ${this.killCount}`,
+      {
+        fontSize: '32px',
+        color: '#fbbf24',
+        fontFamily: gameOverConfig.shardsDisplay.fontFamily,
+        stroke: gameOverConfig.shardsDisplay.stroke,
+        strokeThickness: 3,
+      }
+    );
+    killText.setOrigin(0.5);
+    killText.setScrollFactor(0);
+    killText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
+
     const shardsText = this.add.text(
       centerX,
-      centerY + gameOverConfig.shardsDisplay.offsetY,
-      `Collected ${this.shardCount} Shards`,
+      centerY + gameOverConfig.shardsDisplay.offsetY + 20,
+      `💎  Shards: ${this.shardCount}`,
       {
         fontSize: gameOverConfig.shardsDisplay.fontSize,
         color: gameOverConfig.shardsDisplay.color,

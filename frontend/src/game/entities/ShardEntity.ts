@@ -8,15 +8,16 @@ import { GRAPHICS_CONFIG } from '../config/GameConfig';
 export const createShardEntity = (
   scene: Phaser.Scene,
   x: number,
-  y: number
+  y: number,
+  value: number = 1
 ): Phaser.Physics.Arcade.Sprite => {
   const sprite = scene.physics.add.sprite(x, y, 'shard');
   sprite.setScale(GRAPHICS_CONFIG.SHARD.scale);
-  
-  // Attach components
-  sprite.setData('collectible', createCollectibleComponent('shard', 1));
+
+  // Attach components with dynamic value
+  sprite.setData('collectible', createCollectibleComponent('shard', value));
   sprite.setData('entityType', 'shard');
-  
+
   // Floating animation (up and down)
   scene.tweens.add({
     targets: sprite,
@@ -26,7 +27,7 @@ export const createShardEntity = (
     repeat: -1,
     ease: 'Sine.easeInOut',
   });
-  
+
   // Pulse animation (scale)
   scene.tweens.add({
     targets: sprite,
@@ -36,7 +37,7 @@ export const createShardEntity = (
     repeat: -1,
     ease: 'Quad.easeInOut',
   });
-  
+
   // Rotation animation
   scene.tweens.add({
     targets: sprite,
@@ -45,6 +46,6 @@ export const createShardEntity = (
     repeat: -1,
     ease: 'Linear',
   });
-  
+
   return sprite;
 };

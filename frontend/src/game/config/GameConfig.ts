@@ -292,10 +292,19 @@ export const WAVE_CONFIG = {
 // ===== COLLECTIBLES =====
 export const COLLECTIBLE_CONFIG = {
   SHARD: {
-    value: 1,
+    baseValue: 1, // Base shard value at start
     dropChance: 1.0, // 100% drop rate
     floatDistance: 10, // pixels
     floatDuration: 500, // ms
+  },
+  // Shard scaling over time (exponential growth)
+  SCALING: {
+    baseShardsPerMinute: 20, // Average shards earned per minute early game
+    targetShardsAt15Min: 350, // Target total shards at 15 minutes
+    targetShardsAt20Min: 500, // Target total shards at 20 minutes
+    // Scaling formula: shardValue = baseValue * (1 + 0.15 * minutes)
+    // At 0 min: 1 shard, At 10 min: 2.5 shards, At 20 min: 4 shards
+    shardScalingRate: 0.15, // +15% per minute
   },
 } as const;
 
