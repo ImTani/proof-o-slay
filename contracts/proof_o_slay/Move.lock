@@ -2,7 +2,7 @@
 
 [move]
 version = 3
-manifest_digest = "975EC8ED5172495D99C1C8E4141D2F9C95CCFAC43DE94336BF290D732995B586"
+manifest_digest = "3FAB61C09CEB23BD8729D7FF3598645CF407A56109D1AC8A2D272FA9A6DE774E"
 deps_digest = "F8BBB0CCB2491CA29A3DF03D6F92277A4F3574266507ACD77214D37ECA3F3082"
 dependencies = [
   { id = "One", name = "One" },
@@ -24,3 +24,11 @@ dependencies = [
 compiler-version = "1.0.1"
 edition = "2024.beta"
 flavor = "one"
+
+[env]
+
+[env.testnet]
+chain-id = "1bd5c965"
+original-published-id = "0x0418717e68648ca25d5ede2d49897ec91e4687d67da69a1c048f7d7479e325f6"
+latest-published-id = "0x0418717e68648ca25d5ede2d49897ec91e4687d67da69a1c048f7d7479e325f6"
+published-version = "1"
