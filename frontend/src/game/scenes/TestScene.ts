@@ -627,7 +627,7 @@ export class TestScene extends Phaser.Scene {
         const powerUpType = pickup.getData('powerUpType');
 
         // Activate power-up on player
-        this.powerUpManager.activatePowerUp(this.player, powerUpType);
+        this.powerUpManager.activatePowerUp(this.player, powerUpType, this.time.now);
 
         // Flash pickup
         const originalTint = pickup.tintTopLeft;
@@ -749,9 +749,9 @@ export class TestScene extends Phaser.Scene {
     this.skillCooldownFill = this.add.rectangle(0, 0, UI_LAYOUT_CONFIG.SKILL_BAR.WIDTH, 8, 0x44aaff);
     this.skillCooldownFill.setOrigin(0, 0.5);
 
-    // ESC to return
+    // ESC to return to game scene
     this.input.keyboard?.on('keydown-ESC', () => {
-      this.scene.start('MenuScene');
+      this.scene.start('GameScene');
     });
   }
 
@@ -774,7 +774,7 @@ export class TestScene extends Phaser.Scene {
     movement.speed = baseSpeed;
 
     // Update power-ups (remove expired buffs)
-    this.powerUpManager.update(this.player);
+    this.powerUpManager.update(this.player, time);
 
     // Check if player is in combat zone
     const wasInCombatZone = this.inCombatZone;
@@ -932,7 +932,7 @@ export class TestScene extends Phaser.Scene {
   }
 
   private updatePowerUpUI(): void {
-    const activePowerUps = this.powerUpManager.getActivePowerUps(this.player);
+    const activePowerUps = this.powerUpManager.getActivePowerUps(this.player, this.time.now);
     const config = UI_LAYOUT_CONFIG.POWERUP_DISPLAY;
 
     // Track which power-ups are currently active

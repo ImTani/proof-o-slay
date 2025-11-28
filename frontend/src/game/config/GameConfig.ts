@@ -424,11 +424,11 @@ export const UI_CONFIG = {
 
 // ===== DISPLAY =====
 export const DISPLAY_CONFIG = {
-  WIDTH: 1920,
-  HEIGHT: 1080,
+  WIDTH: window.innerWidth,
+  HEIGHT: window.innerHeight,
   ASPECT_RATIO: 16 / 9,
-  BACKGROUND_COLOR: '#1a1a2e',
-  SCALE_MODE: Phaser.Scale.FIT, // Fit to container maintaining aspect ratio
+  BACKGROUND_COLOR: '#0a0a12', // Deep dark blue/black
+  SCALE_MODE: Phaser.Scale.RESIZE, // Fit to container maintaining aspect ratio
   SCALE_CENTER: true, // Center the game canvas
 } as const;
 
@@ -802,3 +802,8 @@ export const getJackpotMultiplier = (survivalSeconds: number): { multiplier: num
   );
   return tier ? { multiplier: tier.multiplier, label: tier.label } : { multiplier: 1.0, label: '1.0x' };
 };
+
+export interface GameCallbacks {
+  onStatsUpdate?: (stats: any) => void;
+  onGameOver?: (shards: number, timeSurvived: string, enemiesKilled: number) => void;
+}

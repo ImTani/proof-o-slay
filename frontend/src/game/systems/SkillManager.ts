@@ -23,9 +23,6 @@ import { SKILLS, type SkillType } from '../config/GameConfig';
  * - Centralized skill logic routing
  */
 export class SkillManager {
-    private scene: Phaser.Scene;
-    private healthSystem: HealthSystem;
-
     // Skill systems
     private battleDashSystem: BattleDashSystem;
     private arcaneNovaSystem: ArcaneNovaSystem;
@@ -39,9 +36,6 @@ export class SkillManager {
         healthSystem: HealthSystem,
         showDamageNumber?: (x: number, y: number, damage: number) => void
     ) {
-        this.scene = scene;
-        this.healthSystem = healthSystem;
-
         // Initialize all skill systems
         this.battleDashSystem = new BattleDashSystem(scene, showDamageNumber);
         this.arcaneNovaSystem = new ArcaneNovaSystem(scene, showDamageNumber);

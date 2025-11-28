@@ -7,7 +7,7 @@ export type PowerUpType = 'speed_boost' | 'rapid_fire' | 'shield' | 'magnet' | '
 
 export interface ActivePowerUp {
   type: PowerUpType;
-  endTime: number; // System time (Date.now()) when buff expires
+  endTime: number; // Phaser time (scene.time.now) when buff expires
   value: number; // Effect value (speed multiplier, damage absorption, etc.)
 }
 

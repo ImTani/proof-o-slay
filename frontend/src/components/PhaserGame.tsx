@@ -1,30 +1,56 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Phaser from 'phaser';
-import { createGameConfig, type GameCallbacks, type GameUpgrades } from '../game/config';
+import { createGameConfig, type GameCallbacks, type GameStats } from '../game/config';
+import { GameHUD } from './GameHUD';
 
 interface PhaserGameProps {
-  upgrades: GameUpgrades;
+  upgrades: {
+    hasArmor: boolean;
+    hasBoots: boolean;
+  };
+  selectedClass: 'WARRIOR' | 'MAGE' | 'ROGUE';
   onGameOver: (shards: number) => void;
 }
 
-export const PhaserGame: React.FC<PhaserGameProps> = ({ upgrades, onGameOver }) => {
+export const PhaserGame = ({ upgrades, selectedClass, onGameOver }: PhaserGameProps) => {
   const gameRef = useRef<Phaser.Game | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [gameStats, setGameStats] = useState<GameStats>({
+    health: 100,
+    maxHealth: 100,
+    shards: 0,
+    killCount: 0,
+    level: 1,
+    experience: 0,
+    maxExperience: 100,
+    skillName: '',
+    skillCooldown: 0,
+    activePowerUps: [],
+  });
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    // Cleanup existing game instance if any
+    if (gameRef.current) {
+      gameRef.current.destroy(true);
+      gameRef.current = null;
+    }
 
     // Callbacks to pass to Phaser
     const callbacks: GameCallbacks = {
-      onGameOver: (shards: number) => {
-        console.log('Game Over callback received:', shards);
-        onGameOver(shards);
+      onGameOver: (shards) => {
+        // Small delay to let the death animation play
+        setTimeout(() => {
+          onGameOver(shards);
+        }, 2000);
       },
+      onStatsUpdate: (stats) => {
+        setGameStats(stats);
+      }
     };
 
     // Create game config
     const config = createGameConfig({
       upgrades,
+      selectedClass,
       callbacks,
     });
 
@@ -38,23 +64,12 @@ export const PhaserGame: React.FC<PhaserGameProps> = ({ upgrades, onGameOver }) 
         gameRef.current = null;
       }
     };
-  }, [upgrades, onGameOver]);
+  }, [upgrades, selectedClass, onGameOver]);
 
   return (
-    <div
-      id="game-container"
-      ref={containerRef}
-      style={{
-        width: '100%',
-        height: '100%',
-        maxWidth: '100vw',
-        maxHeight: '100vh',
-        aspectRatio: '16 / 9',
-        margin: 0,
-        padding: 0,
-        overflow: 'hidden',
-        position: 'relative',
-      }}
-    />
+    <div className="relative w-full h-full">
+      <div id="game-container" className="w-full h-full" />
+      <GameHUD stats={gameStats} />
+    </div>
   );
 };

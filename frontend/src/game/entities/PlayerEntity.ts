@@ -4,6 +4,7 @@ import { createMovementComponent } from '../components/MovementComponent';
 import { createWeaponComponent } from '../components/WeaponComponent';
 import { createInputComponent } from '../components/InputComponent';
 import { createWeaponSpriteComponent } from '../components/WeaponSpriteComponent';
+import { createSpriteComponent } from '../components/SpriteComponent';
 import { createClassComponent, type ClassType } from '../components/ClassComponent';
 import { createBattleDashComponent } from '../components/BattleDashComponent';
 import { createArcaneNovaComponent } from '../components/ArcaneNovaComponent';
@@ -90,6 +91,7 @@ export const createPlayerEntity = (
   ));
   sprite.setData('input', createInputComponent(scene));
   sprite.setData('weaponSprite', createWeaponSpriteComponent(weaponSprite, stats.weapon.weaponOffset));
+  sprite.setData('sprite', createSpriteComponent('player'));
   sprite.setData('class', createClassComponent(className as ClassType, stats.skillCooldown));
   sprite.setData('powerUp', createPowerUpComponent()); // Power-up buff tracking
 

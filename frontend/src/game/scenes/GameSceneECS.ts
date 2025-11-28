@@ -7,11 +7,8 @@ import {
   WORLD_CONFIG,
   CAMERA_CONFIG,
   PLAYER_CONFIG,
-  UI_CONFIG,
   UI_LAYOUT_CONFIG,
-  UI_STYLE,
   CHARACTER_CLASSES,
-  POWERUP_CONFIG,
   ENEMY_CONFIG,
   COLLECTIBLE_CONFIG,
   getJackpotMultiplier,
@@ -35,7 +32,6 @@ import { EffectManager } from '../systems/EffectManager';
 // Entities
 import { createPlayerEntity, type PlayerUpgrades } from '../entities/PlayerEntity';
 import { createShardEntity } from '../entities/ShardEntity';
-import { createButton, type ButtonEntity } from '../entities/ButtonEntity';
 import { createPowerUpEntity, rollPowerUpDrop } from '../entities/PowerUpEntity';
 
 // Components
@@ -63,10 +59,6 @@ export class GameScene extends Phaser.Scene {
   private enemyManager!: EnemyManager;
   private effectManager!: EffectManager;
 
-  // Cameras
-  // Disabling this camera right now, it was breaking things.
-  // private uiCamera!: Phaser.Cameras.Scene2D.Camera; 
-
   // Entity groups
   private player!: Phaser.Physics.Arcade.Sprite;
   private bullets!: Phaser.Physics.Arcade.Group; // Player bullets
@@ -82,34 +74,14 @@ export class GameScene extends Phaser.Scene {
 
   // Gambling state
   private gamblingActive = false;
-  private stakeAmount = 0;
   private goalMinutes = 0;
-  private goalMultiplier = 0;
   private isJackpotMode = false;
   private gameStartTime = 0;
-  private survivalTimerText!: Phaser.GameObjects.Text;
-  private jackpotMultiplierText!: Phaser.GameObjects.Text;
   private cKey!: Phaser.Input.Keyboard.Key;
 
-  // Pause menu UI
-  private pauseOverlay!: Phaser.GameObjects.Rectangle | null;
-  private pauseTitle!: Phaser.GameObjects.Text | null;
-  private pauseResumeButton!: ButtonEntity | null;
-  private pauseMenuButton!: ButtonEntity | null;
+  // Input keys
   private escKey!: Phaser.Input.Keyboard.Key;
   private spaceKey!: Phaser.Input.Keyboard.Key;
-
-  // UI
-  private healthBarBg!: Phaser.GameObjects.Rectangle;
-  private healthBarFill!: Phaser.GameObjects.Rectangle;
-  private healthText!: Phaser.GameObjects.Text;
-  private shardText!: Phaser.GameObjects.Text;
-  private enemyCountText!: Phaser.GameObjects.Text;
-  private killCountText!: Phaser.GameObjects.Text;
-  private skillCooldownBg!: Phaser.GameObjects.Rectangle;
-  private skillCooldownFill!: Phaser.GameObjects.Rectangle;
-  private skillText!: Phaser.GameObjects.Text;
-  private powerUpIcons: Map<string, { icon: Phaser.GameObjects.Rectangle; timer: Phaser.GameObjects.Text }> = new Map();
 
   private gameConfig!: GameConfig;
 
@@ -118,16 +90,30 @@ export class GameScene extends Phaser.Scene {
     this.gameManager = GameManager.getInstance();
   }
 
+  public setGameConfig(config: { selectedClass: string; callbacks: any }) {
+    this.gameConfig = {
+      ...this.gameConfig,
+      selectedClass: config.selectedClass as any,
+      callbacks: config.callbacks,
+      upgrades: this.gameConfig?.upgrades || { hasArmor: false, hasBoots: false }
+    };
+  }
+
   init() {
     // Get custom config from registry
-    this.gameConfig = this.registry.get('gameConfig');
+    const registryConfig = this.registry.get('gameConfig');
+
+    if (registryConfig) {
+      this.gameConfig = {
+        ...this.gameConfig,
+        ...registryConfig
+      };
+    }
 
     // Initialize gambling state
     if (this.gameConfig.gambling?.isActive) {
       this.gamblingActive = true;
-      this.stakeAmount = this.gameConfig.gambling.stakeAmount;
       this.goalMinutes = this.gameConfig.gambling.goalMinutes;
-      this.goalMultiplier = this.gameConfig.gambling.goalMultiplier;
       this.isJackpotMode = this.gameConfig.gambling.isJackpotMode;
       this.gameStartTime = 0; // Will be set in create()
     }
@@ -161,24 +147,14 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setZoom(CAMERA_CONFIG.ZOOM);
     this.cameras.main.roundPixels = CAMERA_CONFIG.ROUND_PIXELS;
 
-    // TEMPORARY: UI camera disabled for debugging
-    // UI camera stays fixed (no zoom, no movement)
-    // This camera should ignore everything by default (we'll add UI elements to it explicitly)
-    /*
-    this.uiCamera = this.cameras.add(0, 0, DISPLAY_CONFIG.WIDTH, DISPLAY_CONFIG.HEIGHT);
-    this.uiCamera.setScroll(0, 0);
-    this.uiCamera.setZoom(1); // Always 1:1 zoom
-    this.uiCamera.roundPixels = true;
-    */
-
     // Create player entity at world center
     const upgrades: PlayerUpgrades = {
-      hasArmor: this.gameConfig.upgrades.hasArmor,
-      hasBoots: this.gameConfig.upgrades.hasBoots,
+      hasArmor: this.gameConfig.upgrades?.hasArmor ?? false,
+      hasBoots: this.gameConfig.upgrades?.hasBoots ?? false,
     };
 
-    // Get selected class from game config (default to WARRIOR if not set)
-    const selectedClass = this.gameConfig.selectedClass || 'WARRIOR';
+    // Get selected class from game config
+    const selectedClass = this.gameConfig.selectedClass;
 
     this.player = createPlayerEntity(
       this,
@@ -191,17 +167,6 @@ export class GameScene extends Phaser.Scene {
 
     // Set player collision with world bounds
     this.player.setCollideWorldBounds(true);
-
-    // TEMPORARY: Commented out for debugging
-    /*
-    // Make UI camera ignore player and weapon sprite (game world objects)
-    const weaponSpriteComp = this.player.getData('weaponSprite');
-    if (weaponSpriteComp && weaponSpriteComp.sprite) {
-      this.uiCamera.ignore([this.player, weaponSpriteComp.sprite]);
-    } else {
-      this.uiCamera.ignore(this.player);
-    }
-    */
 
     // Make main camera follow player with smooth lerp
     this.cameras.main.startFollow(this.player, CAMERA_CONFIG.ROUND_PIXELS, CAMERA_CONFIG.LERP_X, CAMERA_CONFIG.LERP_Y);
@@ -239,15 +204,8 @@ export class GameScene extends Phaser.Scene {
     // Initialize spawn system for infinite enemy spawning
     this.spawnSystem = new SpawnSystem(this, this.enemyManager);
 
-    // Make UI camera ignore game object groups (all children will inherit this)
-    // Note: We can't directly ignore groups, but we'll need to ignore individual sprites as they're created
-    // For now, this ensures the groups themselves don't interfere
-
     // Set up collisions
     this.setupCollisions();
-
-    // Create UI
-    this.createUI();
 
     // Set up ESC key for pause menu
     this.escKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
@@ -260,12 +218,6 @@ export class GameScene extends Phaser.Scene {
 
     // Set up C key for jackpot cash-out
     this.cKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.C);
-
-    // Initialize pause menu UI elements (hidden by default)
-    this.pauseOverlay = null;
-    this.pauseTitle = null;
-    this.pauseResumeButton = null;
-    this.pauseMenuButton = null;
 
     // Spawn system will start automatically in update loop
   }
@@ -291,6 +243,17 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Update player input and movement
+    // Add trails
+    if (this.player && this.player.active) {
+      this.effectManager.createTrail(this.player, 0x00f3ff);
+    }
+
+    this.bullets.getChildren().forEach((bullet: any) => {
+      if (bullet.active) {
+        this.effectManager.createTrail(bullet, 0xffff00);
+      }
+    });
+
     const playerInput = this.player.getData('input') as InputComponent;
     const playerMovement = this.player.getData('movement') as MovementComponent;
     const pointer = this.input.activePointer;
@@ -307,15 +270,14 @@ export class GameScene extends Phaser.Scene {
     // Restore base speed for next frame (power-up will reapply if still active)
     playerMovement.speed = baseSpeed;
 
-    // Update power-ups (remove expired buffs)
-    this.powerUpManager.update(this.player);
+    // Update power-ups
+    this.powerUpManager.update(this.player, this.time.now);
 
     // Update skill state via SkillManager
     this.skillManager.update(this.player, time);
 
     // Update spawn system (spawns enemies, culls distant ones)
-    const enemyCount = this.spawnSystem.update(time);
-    this.enemyCountText.setText(`👹 Enemies: ${enemyCount}`);
+    this.spawnSystem.update(time);
 
     // Initialize game start time on first update frame (after scene fully loaded)
     if (this.gameStartTime === 0) {
@@ -325,28 +287,25 @@ export class GameScene extends Phaser.Scene {
     // Update survival timer (always shown)
     const survivalSeconds = Math.floor((time - this.gameStartTime) / 1000);
     const minutes = Math.floor(survivalSeconds / 60);
-    const seconds = survivalSeconds % 60;
-    const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-    this.survivalTimerText.setText(`⏱️  Time: ${timeString}`);
 
     // Update gambling-specific UI and check for victory/cash-out
     if (this.gamblingActive) {
       if (this.isJackpotMode) {
         // Jackpot mode - show current multiplier
         const jackpotData = getJackpotMultiplier(survivalSeconds);
-        this.jackpotMultiplierText.setText(`💫 Multiplier: ${jackpotData.label}`);
+        void jackpotData; // Suppress unused warning for now
 
         // Check for cash-out (C key)
         if (Phaser.Input.Keyboard.JustDown(this.cKey)) {
-          const winnings = Math.floor(this.stakeAmount * jackpotData.multiplier);
-          this.gamblingVictory(survivalSeconds, winnings, true);
+          // TODO: Handle victory (emit event to React)
+          this.gameOver(); // For now, just end game
           return;
         }
       } else {
         // Regular bet - check if goal reached
         if (minutes >= this.goalMinutes) {
-          const winnings = Math.floor(this.stakeAmount * this.goalMultiplier);
-          this.gamblingVictory(survivalSeconds, winnings, false);
+          // TODO: Handle victory (emit event to React)
+          this.gameOver(); // For now, just end game
           return;
         }
       }
@@ -403,9 +362,36 @@ export class GameScene extends Phaser.Scene {
     // Update magnet power-up (auto-collect nearby shards)
     this.updateMagnet();
 
-    // Update UI
-    this.updateHealthBar();
-    this.updatePowerUpUI();
+    // Emit stats to React HUD (once per frame)
+    this.emitStats();
+  }
+
+  private emitStats(): void {
+    if (!this.player) return;
+
+    const playerHealth = this.player.getData('health') as HealthComponent;
+    const playerClass = this.player.getData('className') as string;
+    const classConfig = CHARACTER_CLASSES[playerClass];
+
+    // Get active powerups
+    const activePowerUps = this.powerUpManager.getActivePowerUps(this.player, this.time.now).map(p => p.type);
+
+    const stats = {
+      health: playerHealth.current,
+      maxHealth: playerHealth.max,
+      shards: this.shardCount,
+      killCount: this.killCount,
+      level: 1, // Placeholder for now
+      experience: 0, // Placeholder
+      maxExperience: 100, // Placeholder
+      skillName: classConfig.skillName,
+      skillCooldown: this.skillManager.getSkillCooldownInfo(this.player, this.time.now).cooldownPercent,
+      activePowerUps: activePowerUps,
+    };
+
+    if (this.gameConfig.callbacks.onStatsUpdate) {
+      this.gameConfig.callbacks.onStatsUpdate(stats);
+    }
   }
 
   private setupCollisions(): void {
@@ -594,22 +580,20 @@ export class GameScene extends Phaser.Scene {
 
         // Apply double shard multiplier if active
         const shardMultiplier = this.powerUpManager.getShardMultiplier(this.player);
-        const shardValue = collectible.value * shardMultiplier;
+
+        // Use collectible.value with fallback to 1 if invalid
+        const baseValue = (collectible && typeof collectible.value === 'number' && !isNaN(collectible.value))
+          ? collectible.value
+          : 1;
+        const shardValue = Math.max(0, Math.ceil(baseValue * shardMultiplier));
 
         this.shardCount += shardValue;
-        this.shardText.setText(`💎 Shards: ${this.shardCount}`);
+
+        // Destroy shard immediately to prevent multiple collision callbacks
+        shardSprite.destroy();
 
         // Particle burst effect
         this.effectManager.shardPickupBurst(shardSprite.x, shardSprite.y);
-
-        // Visual feedback
-        this.tweens.add({
-          targets: shardSprite,
-          scale: 2,
-          alpha: 0,
-          duration: 300,
-          onComplete: () => shardSprite.destroy(),
-        });
       },
       undefined,
       this
@@ -623,8 +607,8 @@ export class GameScene extends Phaser.Scene {
         const powerUpSprite = powerUp as Phaser.Physics.Arcade.Sprite;
         const powerUpType = powerUpSprite.getData('powerUpType');
 
-        // Activate power-up on player
-        this.powerUpManager.activatePowerUp(this.player, powerUpType);
+        // Activate power-up
+        this.powerUpManager.activatePowerUp(this.player, powerUpType, this.time.now);
 
         // Particle burst effect - color based on power-up type
         const particleColor = powerUpSprite.tintTopLeft;
@@ -642,9 +626,21 @@ export class GameScene extends Phaser.Scene {
       undefined,
       this
     );
+
+    // Initialize AISystem with enemy bullets group
+    this.aiSystem = new AISystem(this.enemyBullets);
+
+    // Add Bloom Post-Processing (Neon Glow)
+    // Add Bloom Post-Processing (Neon Glow)
+    if (this.cameras.main.postFX) {
+      this.cameras.main.postFX.addBloom(0xffffff, 0.5, 0.5, 1.5, 1.1);
+    }
+
+    // Set game start time (use Phaser time, not Date.now())
+    this.gameStartTime = this.time.now;
   }
 
-  // Note: shootBullet method removed - weapon firing now handled by WeaponSystem.tryFire()
+
 
   private updateEnemies(): void {
     const playerPos = new Phaser.Math.Vector2(this.player.x, this.player.y);
@@ -655,18 +651,32 @@ export class GameScene extends Phaser.Scene {
       if (!sprite.active || !sprite.body) return;
 
       const ai = sprite.getData('ai') as AIComponent;
-      this.aiSystem.update(sprite, ai, playerPos, currentTime);
+
+      if (ai) {
+        // AISystem directly sets body.velocity, so we don't need MovementSystem for enemies
+        // MovementSystem would overwrite the AI's velocity with movement.velocity (which is 0,0)
+        this.aiSystem.update(sprite, ai, playerPos, currentTime);
+      }
     });
   }
 
   private updateProjectiles(): void {
     const currentTime = this.time.now;
+
     this.bullets.children.entries.forEach((bullet) => {
       const sprite = bullet as Phaser.Physics.Arcade.Sprite;
       if (!sprite.active) return;
 
       const projectile = sprite.getData('projectile') as ProjectileComponent;
       this.projectileSystem.update(sprite, projectile, currentTime, this.enemies);
+    });
+
+    this.enemyBullets.children.entries.forEach((bullet) => {
+      const sprite = bullet as Phaser.Physics.Arcade.Sprite;
+      if (!sprite.active) return;
+
+      const projectile = sprite.getData('projectile') as ProjectileComponent;
+      this.projectileSystem.update(sprite, projectile, currentTime);
     });
   }
 
@@ -709,7 +719,6 @@ export class GameScene extends Phaser.Scene {
   private onEnemyDeath(enemy: Phaser.Physics.Arcade.Sprite): void {
     // Increment kill count
     this.killCount++;
-    this.killCountText.setText(`⚔️  Kills: ${this.killCount}`);
 
     // Particle burst on death (color matches enemy)
     const enemyColor = enemy.tintTopLeft;
@@ -742,774 +751,25 @@ export class GameScene extends Phaser.Scene {
     enemy.destroy();
   }
 
-  private createUI(): void {
-    // Health bar above player (follows player in game world - uses main camera)
-    const hpBar = UI_CONFIG.HEALTH_BAR;
-    this.healthBarBg = this.add.rectangle(0, 0, hpBar.width, hpBar.height, hpBar.backgroundColor);
-    this.healthBarFill = this.add.rectangle(0, 0, hpBar.width, hpBar.height, hpBar.healthyColor);
-    this.healthBarFill.setOrigin(0, 0.5);
-
-    // Skill cooldown bar (below health bar)
-    const skillBarWidth = 100;
-    const skillBarHeight = 8;
-    this.skillCooldownBg = this.add.rectangle(0, 0, skillBarWidth, skillBarHeight, 0x333333);
-    this.skillCooldownFill = this.add.rectangle(0, 0, skillBarWidth, skillBarHeight, 0x44aaff);
-    this.skillCooldownFill.setOrigin(0, 0.5);
-
-    // Skill name text (above skill bar)
-    const playerClass = this.player.getData('className') as string;
-    const classConfig = CHARACTER_CLASSES[playerClass];
-    this.skillText = this.add.text(0, 0, classConfig.skillName, {
-      fontSize: '14px',
-      color: '#44aaff',
-      fontFamily: 'Arial',
-    });
-    this.skillText.setOrigin(0.5, 1);
-
-    // === HUD PANELS ===
-    const statsPanel = UI_LAYOUT_CONFIG.HUD_PANELS.STATS_PANEL;
-
-    // Top-left stats panel background
-    const statsPanelBg = this.add.rectangle(
-      statsPanel.X,
-      statsPanel.Y,
-      statsPanel.WIDTH,
-      statsPanel.HEIGHT,
-      UI_STYLE.COLORS.PANEL_BG,
-      0.85
-    );
-    statsPanelBg.setOrigin(0, 0);
-    statsPanelBg.setScrollFactor(0);
-    statsPanelBg.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD_BG);
-    statsPanelBg.setStrokeStyle(2, UI_STYLE.COLORS.PANEL_BORDER);
-
-    // Panel header
-    const statsPanelHeader = this.add.rectangle(
-      statsPanel.X,
-      statsPanel.Y,
-      statsPanel.WIDTH,
-      35,
-      UI_STYLE.COLORS.PRIMARY,
-      0.3
-    );
-    statsPanelHeader.setOrigin(0, 0);
-    statsPanelHeader.setScrollFactor(0);
-    statsPanelHeader.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD_BG);
-
-    const statsPanelTitle = this.add.text(
-      statsPanel.X + 12,
-      statsPanel.Y + 8,
-      '⚔️ STATS',
-      {
-        fontSize: '18px',
-        color: UI_STYLE.COLORS.TEXT_PRIMARY,
-        fontFamily: 'Arial',
-        fontStyle: 'bold',
-      }
-    );
-    statsPanelTitle.setScrollFactor(0);
-    statsPanelTitle.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
-
-    // Stats text inside panel
-    const playerHealth = this.player.getData('health') as HealthComponent;
-    const textStyle = UI_CONFIG.TEXT;
-    const textX = statsPanel.X + 12;
-    let textY = statsPanel.Y + 50;
-
-    this.healthText = this.add.text(
-      textX,
-      textY,
-      `❤️  HP: ${playerHealth.current}/${playerHealth.max}`,
-      { fontSize: textStyle.fontSize, color: textStyle.healthColor, fontFamily: textStyle.fontFamily }
-    );
-    textY += 30;
-
-    this.shardText = this.add.text(textX, textY, `💎 Shards: ${this.shardCount}`, {
-      fontSize: textStyle.fontSize,
-      color: textStyle.shardColor,
-      fontFamily: textStyle.fontFamily,
-    });
-    textY += 30;
-
-    this.enemyCountText = this.add.text(textX, textY, `👹 Enemies: 0`, {
-      fontSize: textStyle.fontSize,
-      color: textStyle.waveColor,
-      fontFamily: textStyle.fontFamily,
-    });
-    textY += 30;
-
-    // Survival timer (always shown, not just for gambling)
-    this.survivalTimerText = this.add.text(textX, textY, `⏱️  Time: 0:00`, {
-      fontSize: textStyle.fontSize,
-      color: '#90cdf4',
-      fontFamily: textStyle.fontFamily,
-    });
-    textY += 30;
-
-    // Kill count tracker
-    this.killCountText = this.add.text(textX, textY, `⚔️  Kills: 0`, {
-      fontSize: textStyle.fontSize,
-      color: '#fbbf24',
-      fontFamily: textStyle.fontFamily,
-    });
-
-    // Fix UI text to camera
-    this.healthText.setScrollFactor(0);
-    this.shardText.setScrollFactor(0);
-    this.enemyCountText.setScrollFactor(0);
-    this.survivalTimerText.setScrollFactor(0);
-    this.killCountText.setScrollFactor(0);
-
-    // Set depth to ensure UI text is on top
-    this.healthText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
-    this.shardText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
-    this.enemyCountText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
-    this.survivalTimerText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
-    this.killCountText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
-
-    // Gambling UI (if active) - Top-right panel
-    if (this.gamblingActive) {
-      const gamblingPanel = UI_LAYOUT_CONFIG.HUD_PANELS.GAMBLING_PANEL;
-      const panelX = DISPLAY_CONFIG.WIDTH - gamblingPanel.WIDTH - gamblingPanel.MARGIN_RIGHT;
-      const panelY = gamblingPanel.MARGIN_TOP;
-
-      // Gambling panel background
-      const gamblingPanelBg = this.add.rectangle(
-        panelX,
-        panelY,
-        gamblingPanel.WIDTH,
-        gamblingPanel.HEIGHT,
-        UI_STYLE.COLORS.PANEL_BG,
-        0.85
-      );
-      gamblingPanelBg.setOrigin(0, 0);
-      gamblingPanelBg.setScrollFactor(0);
-      gamblingPanelBg.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD_BG);
-      gamblingPanelBg.setStrokeStyle(2, UI_STYLE.COLORS.SECONDARY);
-
-      // Panel header
-      const gamblingPanelHeader = this.add.rectangle(
-        panelX,
-        panelY,
-        gamblingPanel.WIDTH,
-        35,
-        UI_STYLE.COLORS.SECONDARY,
-        0.3
-      );
-      gamblingPanelHeader.setOrigin(0, 0);
-      gamblingPanelHeader.setScrollFactor(0);
-      gamblingPanelHeader.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD_BG);
-
-      const gamblingPanelTitle = this.add.text(
-        panelX + 12,
-        panelY + 8,
-        this.isJackpotMode ? '🎰 JACKPOT MODE' : '💰 GAMBLING',
-        {
-          fontSize: '18px',
-          color: this.isJackpotMode ? '#9f7aea' : '#f6ad55',
-          fontFamily: 'Arial',
-          fontStyle: 'bold',
-        }
-      );
-      gamblingPanelTitle.setScrollFactor(0);
-      gamblingPanelTitle.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
-
-      let gamblingTextY = panelY + 50;
-      const gamblingTextX = panelX + 12;
-
-      if (this.isJackpotMode) {
-        // Jackpot mode - show multiplier and cash-out hint
-        this.survivalTimerText = this.add.text(gamblingTextX, gamblingTextY, '⏱️  Time: 0:00', {
-          fontSize: textStyle.fontSize,
-          color: '#9f7aea',
-          fontFamily: textStyle.fontFamily,
-          fontStyle: 'bold',
-        });
-        gamblingTextY += 30;
-
-        this.jackpotMultiplierText = this.add.text(gamblingTextX, gamblingTextY, '💫 Multiplier: 1.0x', {
-          fontSize: textStyle.fontSize,
-          color: '#f6ad55',
-          fontFamily: textStyle.fontFamily,
-          fontStyle: 'bold',
-        });
-        gamblingTextY += 30;
-
-        const cashOutHint = this.add.text(gamblingTextX, gamblingTextY, '💸 Press C to Cash Out', {
-          fontSize: '14px',
-          color: '#cbd5e0',
-          fontFamily: textStyle.fontFamily,
-        });
-        cashOutHint.setScrollFactor(0);
-        cashOutHint.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
-
-        this.jackpotMultiplierText.setScrollFactor(0);
-        this.jackpotMultiplierText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
-      } else {
-        // Regular bet - show countdown to goal
-        this.survivalTimerText = this.add.text(gamblingTextX, gamblingTextY, `🎯 TARGET: ${this.goalMinutes}:00`, {
-          fontSize: textStyle.fontSize,
-          color: '#48bb78',
-          fontFamily: textStyle.fontFamily,
-          fontStyle: 'bold',
-        });
-        gamblingTextY += 30;
-
-        const stakeInfo = this.add.text(gamblingTextX, gamblingTextY, `💰 Stake: ${this.stakeAmount} $SLAY`, {
-          fontSize: '16px',
-          color: '#f6ad55',
-          fontFamily: textStyle.fontFamily,
-        });
-        stakeInfo.setScrollFactor(0);
-        stakeInfo.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
-        gamblingTextY += 30;
-
-        const payoutInfo = this.add.text(gamblingTextX, gamblingTextY, `💎 Win: ${this.stakeAmount * this.goalMultiplier} $SLAY`, {
-          fontSize: '16px',
-          color: '#4caf50',
-          fontFamily: textStyle.fontFamily,
-        });
-        payoutInfo.setScrollFactor(0);
-        payoutInfo.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
-      }
-
-      this.survivalTimerText.setScrollFactor(0);
-      this.survivalTimerText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
-    }
-  }
-
-  private updatePowerUpUI(): void {
-    const activePowerUps = this.powerUpManager.getActivePowerUps(this.player);
-    const config = UI_LAYOUT_CONFIG.POWERUP_DISPLAY;
-
-    // Track which power-ups are currently active
-    const activePowerUpTypes = new Set(activePowerUps.map(p => p.type));
-
-    // Remove UI elements for expired power-ups
-    for (const [type, uiElements] of this.powerUpIcons.entries()) {
-      if (!activePowerUpTypes.has(type as any)) {
-        uiElements.icon.destroy();
-        uiElements.timer.destroy();
-        this.powerUpIcons.delete(type);
-      }
-    }
-
-    // Create or update UI elements for active power-ups
-    activePowerUps.forEach((powerUp, index) => {
-      const typeString = powerUp.type.toString();
-      const powerUpConfig = POWERUP_CONFIG[powerUp.type];
-
-      if (!this.powerUpIcons.has(typeString)) {
-        // Create new icon
-        const x = config.OFFSET_X + index * config.ICON_SPACING;
-        const y = config.OFFSET_Y;
-
-        const icon = this.add.rectangle(x, y, config.ICON_SIZE, config.ICON_SIZE, powerUpConfig.color);
-        icon.setScrollFactor(0);
-        icon.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
-
-        const timer = this.add.text(x, y + config.TIMER_OFFSET_Y, '', {
-          fontSize: config.TIMER_FONT_SIZE,
-          color: '#ffffff',
-          fontFamily: 'Arial',
-        });
-        timer.setOrigin(0.5, 0);
-        timer.setScrollFactor(0);
-        timer.setDepth(UI_LAYOUT_CONFIG.DEPTHS.HUD);
-
-        this.powerUpIcons.set(typeString, { icon, timer });
-      }
-
-      // Update timer text
-      const uiElements = this.powerUpIcons.get(typeString)!;
-      const secondsRemaining = Math.ceil(powerUp.timeRemaining / 1000);
-      uiElements.timer.setText(`${secondsRemaining}s`);
-
-      // Update position (in case index changed)
-      const x = config.OFFSET_X + index * config.ICON_SPACING;
-      const y = config.OFFSET_Y;
-      uiElements.icon.setPosition(x, y);
-      uiElements.timer.setPosition(x, y + config.TIMER_OFFSET_Y);
-    });
-  }
-
-  private updateHealthBar(): void {
-    const health = this.player.getData('health') as HealthComponent;
-    const hpBar = UI_CONFIG.HEALTH_BAR;
-
-    // Position health bar
-    const offsetY = this.player.y + hpBar.offsetY;
-    this.healthBarBg.setPosition(this.player.x, offsetY);
-    this.healthBarFill.setPosition(this.player.x - hpBar.width / 2, offsetY);
-
-    // Width
-    const healthPercent = health.current / health.max;
-    this.healthBarFill.width = hpBar.width * healthPercent;
-
-    // Color
-    if (healthPercent > hpBar.warningThreshold) {
-      this.healthBarFill.setFillStyle(hpBar.healthyColor);
-    } else if (healthPercent > hpBar.criticalThreshold) {
-      this.healthBarFill.setFillStyle(hpBar.warningColor);
-    } else {
-      this.healthBarFill.setFillStyle(hpBar.criticalColor);
-    }
-
-    this.healthText.setText(`❤️  HP: ${health.current}/${health.max}`);
-
-    // Update skill cooldown bar using SkillManager
-    const skillInfo = this.skillManager.getSkillCooldownInfo(this.player, this.time.now);
-    const skillBarWidth = UI_LAYOUT_CONFIG.SKILL_BAR.WIDTH;
-    const skillBarOffsetY = this.player.y - UI_LAYOUT_CONFIG.SKILL_BAR.OFFSET_Y;
-
-    this.skillCooldownBg.setPosition(this.player.x, skillBarOffsetY);
-    this.skillCooldownFill.setPosition(this.player.x - skillBarWidth / 2, skillBarOffsetY);
-    this.skillCooldownFill.width = skillBarWidth * skillInfo.cooldownPercent;
-
-    // Change color when ready
-    if (skillInfo.isReady) {
-      this.skillCooldownFill.setFillStyle(0x44ff44); // Green when ready
-    } else {
-      this.skillCooldownFill.setFillStyle(0x44aaff); // Blue when on cooldown
-    }
-
-    // Update skill text position
-    this.skillText.setPosition(this.player.x, skillBarOffsetY - UI_LAYOUT_CONFIG.SKILL_BAR.TEXT_OFFSET_Y);
-  }
-
   private gameOver(): void {
     console.log(`💀 Game Over! Collected ${this.shardCount} shards`);
-
-    // If gambling was active and player died before goal, it's a loss
-    if (this.gamblingActive) {
-      this.gamblingDefeat();
-      return;
-    }
-
-    // Regular game over
-    this.showGameOverScreen();
-  }
-
-  private gamblingVictory(survivalSeconds: number, winnings: number, isJackpot: boolean): void {
-    console.log(`🎉 GAMBLING VICTORY! Won ${winnings} $SLAY`);
-
-    // Destroy weapon sprite
-    const weaponSpriteComp = this.player.getData('weaponSprite') as WeaponSpriteComponent;
-    if (weaponSpriteComp && weaponSpriteComp.sprite) {
-      weaponSpriteComp.sprite.destroy();
-    }
-
     this.physics.pause();
+    if (this.gameConfig.callbacks.onGameOver) {
+      // Calculate survival time
+      const survivalSeconds = this.gameStartTime > 0
+        ? Math.floor((this.time.now - this.gameStartTime) / 1000)
+        : 0;
 
-    const centerX = DISPLAY_CONFIG.WIDTH / 2;
-    const centerY = DISPLAY_CONFIG.HEIGHT / 2;
+      const minutes = Math.floor(survivalSeconds / 60);
+      const seconds = survivalSeconds % 60;
+      const timeFormatted = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
-    // Victory title
-    const victoryText = this.add.text(
-      centerX,
-      centerY - 150,
-      isJackpot ? '🎰 JACKPOT CASHED OUT!' : '🎉 BET WON!',
-      {
-        fontSize: '64px',
-        color: '#48bb78',
-        fontFamily: 'Arial',
-        fontStyle: 'bold',
-        stroke: '#000000',
-        strokeThickness: 6,
-      }
-    );
-    victoryText.setOrigin(0.5);
-    victoryText.setScrollFactor(0);
-    victoryText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
-
-    // Survival time
-    const minutes = Math.floor(survivalSeconds / 60);
-    const seconds = survivalSeconds % 60;
-    const timeText = this.add.text(
-      centerX,
-      centerY - 70,
-      `Survived: ${minutes}:${seconds.toString().padStart(2, '0')}`,
-      {
-        fontSize: '32px',
-        color: '#ffffff',
-        fontFamily: 'Arial',
-      }
-    );
-    timeText.setOrigin(0.5);
-    timeText.setScrollFactor(0);
-    timeText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
-
-    // Winnings display
-    const winningsText = this.add.text(
-      centerX,
-      centerY,
-      `Won: ${winnings} $SLAY`,
-      {
-        fontSize: '48px',
-        color: '#f6ad55',
-        fontFamily: 'Arial',
-        fontStyle: 'bold',
-        stroke: '#000000',
-        strokeThickness: 4,
-      }
-    );
-    winningsText.setOrigin(0.5);
-    winningsText.setScrollFactor(0);
-    winningsText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
-
-    // Shards collected
-    const shardsText = this.add.text(
-      centerX,
-      centerY + 60,
-      `Shards: ${this.shardCount}`,
-      {
-        fontSize: '24px',
-        color: '#4299e1',
-        fontFamily: 'Arial',
-      }
-    );
-    shardsText.setOrigin(0.5);
-    shardsText.setScrollFactor(0);
-    shardsText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
-
-    // Buttons
-    const playAgainButton = createButton(
-      this,
-      centerX - 150,
-      centerY + 150,
-      'PLAY AGAIN',
-      () => this.scene.restart(),
-      {
-        style: 'success',
-        fontSize: '28px',
-        icon: '▶',
-        focusIndex: 0,
-        depth: UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER,
-      }
-    );
-
-    const menuButton = createButton(
-      this,
-      centerX + 150,
-      centerY + 150,
-      'MENU',
-      () => this.scene.start('MenuScene'),
-      {
-        style: 'secondary',
-        fontSize: '28px',
-        icon: '⬅',
-        focusIndex: 1,
-        depth: UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER,
-      }
-    );
-
-    this.focusManager.clear();
-    this.focusManager.register(playAgainButton.text);
-    this.focusManager.register(menuButton.text);
-
-    // Trigger callback with shards (winnings will be handled by React in Phase 4)
-    this.gameConfig.callbacks.onGameOver(this.shardCount);
-  }
-
-  private gamblingDefeat(): void {
-    console.log(`💸 GAMBLING DEFEAT! Lost ${this.stakeAmount} $SLAY`);
-
-    // Destroy weapon sprite
-    const weaponSpriteComp = this.player.getData('weaponSprite') as WeaponSpriteComponent;
-    if (weaponSpriteComp && weaponSpriteComp.sprite) {
-      weaponSpriteComp.sprite.destroy();
+      this.gameConfig.callbacks.onGameOver(
+        this.shardCount,
+        timeFormatted,
+        this.killCount
+      );
     }
-
-    this.physics.pause();
-
-    // Calculate survival time
-    const survivalSeconds = this.gameStartTime > 0
-      ? Math.floor((this.time.now - this.gameStartTime) / 1000)
-      : 0;
-    const minutes = Math.floor(survivalSeconds / 60);
-    const seconds = survivalSeconds % 60;
-    const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-
-    const centerX = DISPLAY_CONFIG.WIDTH / 2;
-    const centerY = DISPLAY_CONFIG.HEIGHT / 2;
-
-    // Defeat title
-    const defeatText = this.add.text(
-      centerX,
-      centerY - 200,
-      '💸 STAKE LOST',
-      {
-        fontSize: '64px',
-        color: '#f56565',
-        fontFamily: 'Arial',
-        fontStyle: 'bold',
-        stroke: '#000000',
-        strokeThickness: 6,
-      }
-    );
-    defeatText.setOrigin(0.5);
-    defeatText.setScrollFactor(0);
-    defeatText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
-
-    // Loss display
-    const lossText = this.add.text(
-      centerX,
-      centerY - 120,
-      `Lost: ${this.stakeAmount} $SLAY`,
-      {
-        fontSize: '48px',
-        color: '#f6ad55',
-        fontFamily: 'Arial',
-        fontStyle: 'bold',
-        stroke: '#000000',
-        strokeThickness: 4,
-      }
-    );
-    lossText.setOrigin(0.5);
-    lossText.setScrollFactor(0);
-    lossText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
-
-    // Goal reminder
-    const goalText = this.add.text(
-      centerX,
-      centerY - 60,
-      this.isJackpotMode ? 'Died in Jackpot Mode' : `Goal was: ${this.goalMinutes} minutes`,
-      {
-        fontSize: '24px',
-        color: '#cbd5e0',
-        fontFamily: 'Arial',
-      }
-    );
-    goalText.setOrigin(0.5);
-    goalText.setScrollFactor(0);
-    goalText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
-
-    // Survival time
-    const timeText = this.add.text(
-      centerX,
-      centerY + 10,
-      `⏱️  Survived: ${timeString}`,
-      {
-        fontSize: '28px',
-        color: '#90cdf4',
-        fontFamily: 'Arial',
-      }
-    );
-    timeText.setOrigin(0.5);
-    timeText.setScrollFactor(0);
-    timeText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
-
-    // Kill count
-    const killText = this.add.text(
-      centerX,
-      centerY + 50,
-      `⚔️  Kills: ${this.killCount}`,
-      {
-        fontSize: '28px',
-        color: '#fbbf24',
-        fontFamily: 'Arial',
-      }
-    );
-    killText.setOrigin(0.5);
-    killText.setScrollFactor(0);
-    killText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
-
-    // Shards collected (still keep these)
-    const shardsText = this.add.text(
-      centerX,
-      centerY + 90,
-      `💎  Shards: ${this.shardCount}`,
-      {
-        fontSize: '28px',
-        color: '#4299e1',
-        fontFamily: 'Arial',
-      }
-    );
-    shardsText.setOrigin(0.5);
-    shardsText.setScrollFactor(0);
-    shardsText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
-
-    // Buttons
-    const playAgainButton = createButton(
-      this,
-      centerX - 150,
-      centerY + 150,
-      'TRY AGAIN',
-      () => this.scene.restart(),
-      {
-        style: 'danger',
-        fontSize: '28px',
-        icon: '▶',
-        focusIndex: 0,
-        depth: UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER,
-      }
-    );
-
-    const menuButton = createButton(
-      this,
-      centerX + 150,
-      centerY + 150,
-      'MENU',
-      () => this.scene.start('MenuScene'),
-      {
-        style: 'secondary',
-        fontSize: '28px',
-        icon: '⬅',
-        focusIndex: 1,
-        depth: UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER,
-      }
-    );
-
-    this.focusManager.clear();
-    this.focusManager.register(playAgainButton.text);
-    this.focusManager.register(menuButton.text);
-
-    // Trigger callback with shards (stake loss will be handled by React in Phase 4)
-    this.gameConfig.callbacks.onGameOver(this.shardCount);
-  }
-
-  private showGameOverScreen(): void {
-    console.log(`💀 Game Over! Collected ${this.shardCount} shards`);
-
-    // Destroy weapon sprite
-    const weaponSpriteComp = this.player.getData('weaponSprite') as WeaponSpriteComponent;
-    if (weaponSpriteComp && weaponSpriteComp.sprite) {
-      weaponSpriteComp.sprite.destroy();
-    }
-
-    this.physics.pause();
-
-    // Calculate survival time
-    const survivalSeconds = this.gameStartTime > 0
-      ? Math.floor((this.time.now - this.gameStartTime) / 1000)
-      : 0;
-    const minutes = Math.floor(survivalSeconds / 60);
-    const seconds = survivalSeconds % 60;
-    const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-
-    // Use DISPLAY_CONFIG for centered positioning
-    const centerX = DISPLAY_CONFIG.WIDTH / 2;
-    const centerY = DISPLAY_CONFIG.HEIGHT / 2;
-    const gameOverConfig = UI_CONFIG.GAME_OVER;
-
-    const gameOverText = this.add.text(
-      centerX,
-      centerY + gameOverConfig.title.offsetY,
-      'GAME OVER',
-      {
-        fontSize: gameOverConfig.title.fontSize,
-        color: gameOverConfig.title.color,
-        fontFamily: gameOverConfig.title.fontFamily,
-        stroke: gameOverConfig.title.stroke,
-        strokeThickness: gameOverConfig.title.strokeThickness,
-      }
-    );
-    gameOverText.setOrigin(0.5);
-    gameOverText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
-
-    // Survival time display
-    const timeText = this.add.text(
-      centerX,
-      centerY + gameOverConfig.shardsDisplay.offsetY - 80,
-      `⏱️  Survived: ${timeString}`,
-      {
-        fontSize: '32px',
-        color: '#90cdf4',
-        fontFamily: gameOverConfig.shardsDisplay.fontFamily,
-        stroke: gameOverConfig.shardsDisplay.stroke,
-        strokeThickness: 3,
-      }
-    );
-    timeText.setOrigin(0.5);
-    timeText.setScrollFactor(0);
-    timeText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
-
-    // Kill count display
-    const killText = this.add.text(
-      centerX,
-      centerY + gameOverConfig.shardsDisplay.offsetY - 30,
-      `⚔️  Kills: ${this.killCount}`,
-      {
-        fontSize: '32px',
-        color: '#fbbf24',
-        fontFamily: gameOverConfig.shardsDisplay.fontFamily,
-        stroke: gameOverConfig.shardsDisplay.stroke,
-        strokeThickness: 3,
-      }
-    );
-    killText.setOrigin(0.5);
-    killText.setScrollFactor(0);
-    killText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
-
-    const shardsText = this.add.text(
-      centerX,
-      centerY + gameOverConfig.shardsDisplay.offsetY + 20,
-      `💎  Shards: ${this.shardCount}`,
-      {
-        fontSize: gameOverConfig.shardsDisplay.fontSize,
-        color: gameOverConfig.shardsDisplay.color,
-        fontFamily: gameOverConfig.shardsDisplay.fontFamily,
-        stroke: gameOverConfig.shardsDisplay.stroke,
-        strokeThickness: gameOverConfig.shardsDisplay.strokeThickness,
-      }
-    );
-    shardsText.setOrigin(0.5);
-    shardsText.setScrollFactor(0);
-    shardsText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
-
-    gameOverText.setScrollFactor(0);
-
-    // Play Again button - using button factory
-    const playAgainButton = createButton(
-      this,
-      centerX - UI_LAYOUT_CONFIG.GAME_OVER.BUTTON_OFFSET_X,
-      centerY + UI_LAYOUT_CONFIG.GAME_OVER.BUTTON_OFFSET_Y,
-      'PLAY AGAIN',
-      () => this.scene.restart(),
-      {
-        style: 'primary',
-        fontSize: '28px',
-        icon: '▶',
-        focusIndex: 0,
-        depth: UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER,
-      }
-    );
-
-    // Menu button - using button factory
-    const menuButton = createButton(
-      this,
-      centerX + UI_LAYOUT_CONFIG.GAME_OVER.BUTTON_OFFSET_X,
-      centerY + UI_LAYOUT_CONFIG.GAME_OVER.BUTTON_OFFSET_Y,
-      'MENU',
-      () => this.scene.start('MenuScene'),
-      {
-        style: 'secondary',
-        fontSize: '28px',
-        icon: '⬅',
-        focusIndex: 1,
-        depth: UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER,
-      }
-    );
-
-    // Clear focus manager and register game over buttons
-    this.focusManager.clear();
-    this.focusManager.register(playAgainButton.text);
-    this.focusManager.register(menuButton.text);
-
-    // Hint text
-    const hintText = this.add.text(
-      centerX,
-      centerY + UI_LAYOUT_CONFIG.GAME_OVER.HINT_OFFSET_Y,
-      'Use Arrow Keys / Tab / D-pad to navigate',
-      {
-        fontSize: '18px',
-        color: '#666666',
-        fontFamily: 'Arial',
-      }
-    );
-    hintText.setOrigin(0.5);
-    hintText.setScrollFactor(0);
-    hintText.setDepth(UI_LAYOUT_CONFIG.DEPTHS.GAME_OVER);
   }
 
   private togglePause(): void {
@@ -1521,7 +781,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   private pauseGame(): void {
-    // Don't allow pause if game over
     const playerHealth = this.player.getData('health') as HealthComponent;
     if (this.healthSystem.isDead(playerHealth)) {
       return;
@@ -1529,152 +788,35 @@ export class GameScene extends Phaser.Scene {
 
     this.gameManager.pause();
     this.physics.pause();
-
-    this.showPauseMenu();
   }
 
   private resumeGame(): void {
     this.gameManager.resume();
     this.physics.resume();
-
-    this.hidePauseMenu();
-  }
-
-  private showPauseMenu(): void {
-    const centerX = DISPLAY_CONFIG.WIDTH / 2;
-    const centerY = DISPLAY_CONFIG.HEIGHT / 2;
-
-    // Semi-transparent overlay
-    this.pauseOverlay = this.add.rectangle(
-      centerX,
-      centerY,
-      DISPLAY_CONFIG.WIDTH,
-      DISPLAY_CONFIG.HEIGHT,
-      UI_STYLE.COLORS.DARK_BG,
-      0.85
-    );
-    this.pauseOverlay.setScrollFactor(0);
-    this.pauseOverlay.setDepth(UI_LAYOUT_CONFIG.DEPTHS.PAUSE_OVERLAY);
-
-    // Pause menu panel
-    const panelWidth = 500;
-    const panelHeight = 400;
-    const pausePanel = this.add.rectangle(
-      centerX,
-      centerY,
-      panelWidth,
-      panelHeight,
-      UI_STYLE.COLORS.PANEL_BG,
-      0.95
-    );
-    pausePanel.setScrollFactor(0);
-    pausePanel.setDepth(UI_LAYOUT_CONFIG.DEPTHS.PAUSE_OVERLAY);
-    pausePanel.setStrokeStyle(3, UI_STYLE.COLORS.PRIMARY);
-
-    // Title with icon
-    const titleIcon = this.add.text(
-      centerX,
-      centerY + UI_LAYOUT_CONFIG.PAUSE_MENU.TITLE_OFFSET_Y - 30,
-      '⏸️',
-      {
-        fontSize: '64px',
-      }
-    );
-    titleIcon.setOrigin(0.5);
-    titleIcon.setScrollFactor(0);
-    titleIcon.setDepth(UI_LAYOUT_CONFIG.DEPTHS.PAUSE_UI);
-
-    this.pauseTitle = this.add.text(
-      centerX,
-      centerY + UI_LAYOUT_CONFIG.PAUSE_MENU.TITLE_OFFSET_Y + 30,
-      'PAUSED',
-      {
-        fontSize: '56px',
-        color: '#4287f5',
-        fontFamily: 'Arial',
-        fontStyle: 'bold',
-        stroke: '#000000',
-        strokeThickness: 4,
-      }
-    );
-    this.pauseTitle.setOrigin(0.5);
-    this.pauseTitle.setScrollFactor(0);
-    this.pauseTitle.setDepth(UI_LAYOUT_CONFIG.DEPTHS.PAUSE_UI);
-
-    // Resume button - using button factory
-    this.pauseResumeButton = createButton(
-      this,
-      centerX,
-      centerY + UI_LAYOUT_CONFIG.PAUSE_MENU.BUTTON_OFFSET_Y,
-      'RESUME',
-      () => this.resumeGame(),
-      {
-        style: 'success',
-        icon: '▶',
-        focusIndex: 0,
-        depth: UI_LAYOUT_CONFIG.DEPTHS.PAUSE_UI,
-      }
-    );
-
-    // Menu button - using button factory
-    this.pauseMenuButton = createButton(
-      this,
-      centerX,
-      centerY + UI_LAYOUT_CONFIG.PAUSE_MENU.BUTTON_OFFSET_Y + UI_LAYOUT_CONFIG.PAUSE_MENU.BUTTON_SPACING,
-      'MAIN MENU',
-      () => {
-        this.hidePauseMenu();
-        this.scene.start('MenuScene');
-      },
-      {
-        style: 'secondary',
-        icon: '⬅',
-        focusIndex: 1,
-        depth: UI_LAYOUT_CONFIG.DEPTHS.PAUSE_UI,
-      }
-    );
-
-    // Register with focus manager (auto-focus will handle first focus)
-    this.focusManager.clear();
-    this.focusManager.register(this.pauseResumeButton.text);
-    this.focusManager.register(this.pauseMenuButton.text);
-  }
-
-  private hidePauseMenu(): void {
-    // Destroy all pause menu UI elements
-    if (this.pauseOverlay) {
-      this.pauseOverlay.destroy();
-      this.pauseOverlay = null;
-    }
-    if (this.pauseTitle) {
-      this.pauseTitle.destroy();
-      this.pauseTitle = null;
-    }
-    if (this.pauseResumeButton) {
-      this.pauseResumeButton.destroy();
-      this.pauseResumeButton = null;
-    }
-    if (this.pauseMenuButton) {
-      this.pauseMenuButton.destroy();
-      this.pauseMenuButton = null;
-    }
-
-    // Clear focus manager (will be re-registered if game over screen shows)
-    this.focusManager.clear();
   }
 
   private createTilingBackground(): void {
-    // Create a simple grid pattern texture for the background
+    // Create a neon grid pattern
     const tileSize = WORLD_CONFIG.TILE_SIZE;
     const graphics = this.add.graphics();
 
-    // Fill with base color
-    graphics.fillStyle(parseInt(WORLD_CONFIG.BACKGROUND_COLOR.replace('#', '0x')), 1);
+    // Fill with base color (Deep Dark Blue/Black)
+    graphics.fillStyle(0x020205, 1);
     graphics.fillRect(0, 0, tileSize, tileSize);
 
-    // Add grid lines for visual reference
-    graphics.lineStyle(1, 0x2a2a3e, 0.3);
+    // Add neon grid lines
+    // Primary grid (Cyan)
+    graphics.lineStyle(1, 0x00f3ff, 0.1);
     graphics.strokeRect(0, 0, tileSize, tileSize);
+
+    // Crosshair center
+    graphics.lineStyle(1, 0x00f3ff, 0.05);
+    graphics.beginPath();
+    graphics.moveTo(tileSize / 2 - 4, tileSize / 2);
+    graphics.lineTo(tileSize / 2 + 4, tileSize / 2);
+    graphics.moveTo(tileSize / 2, tileSize / 2 - 4);
+    graphics.lineTo(tileSize / 2, tileSize / 2 + 4);
+    graphics.strokePath();
 
     // Generate texture from graphics
     graphics.generateTexture('backgroundTile', tileSize, tileSize);
@@ -1689,47 +831,83 @@ export class GameScene extends Phaser.Scene {
       'backgroundTile'
     );
     tilingBg.setOrigin(0, 0);
-    tilingBg.setDepth(-1); // Behind everything else
-
-    // TEMPORARY: Commented out for debugging
-    // Make UI camera ignore the background (it's a game world object)
-    // this.uiCamera.ignore(tilingBg);
+    tilingBg.setDepth(-100); // Behind everything else
   }
 
   private createPlaceholderGraphics(): void {
-    // Player
+    // Player - Neon Cyan Triangle
     const playerGraphics = this.make.graphics({ x: 0, y: 0 });
-    playerGraphics.fillStyle(0x4287f5, 1);
-    playerGraphics.fillRect(0, 0, 32, 32);
-    playerGraphics.generateTexture('player', 32, 32);
+    playerGraphics.lineStyle(2, 0x00f3ff, 1);
+    playerGraphics.fillStyle(0x00f3ff, 0.2);
+
+    // Draw triangle
+    const pSize = 32;
+    playerGraphics.beginPath();
+    playerGraphics.moveTo(pSize, pSize / 2); // Tip
+    playerGraphics.lineTo(0, 0);
+    playerGraphics.lineTo(0, pSize);
+    playerGraphics.closePath();
+    playerGraphics.strokePath();
+    playerGraphics.fillPath();
+
+    // Add glow center
+    playerGraphics.fillStyle(0xffffff, 0.8);
+    playerGraphics.fillCircle(pSize / 3, pSize / 2, 4);
+
+    playerGraphics.generateTexture('player', pSize, pSize);
     playerGraphics.destroy();
 
-    // Pistol (small rectangle representing the gun)
+    // Pistol - Not needed for visual style, but keeping texture for logic
     const pistolGraphics = this.make.graphics({ x: 0, y: 0 });
-    pistolGraphics.fillStyle(0x666666, 1); // Dark gray
-    pistolGraphics.fillRect(0, 0, 16, 8); // Rectangular pistol shape
+    pistolGraphics.fillStyle(0x00f3ff, 0); // Invisible
+    pistolGraphics.fillRect(0, 0, 16, 8);
     pistolGraphics.generateTexture('pistol', 16, 8);
     pistolGraphics.destroy();
 
-    // Bullet
+    // Bullet - Bright Yellow/White Streak
     const bulletGraphics = this.make.graphics({ x: 0, y: 0 });
-    bulletGraphics.fillStyle(0xffeb3b, 1);
-    bulletGraphics.fillCircle(4, 4, 4);
+    bulletGraphics.fillStyle(0xffffff, 1);
+    bulletGraphics.fillCircle(4, 4, 2); // Core
+    bulletGraphics.lineStyle(2, 0xffff00, 0.8);
+    bulletGraphics.strokeCircle(4, 4, 4); // Glow
     bulletGraphics.generateTexture('bullet', 8, 8);
     bulletGraphics.destroy();
 
-    // Enemy
+    // Enemy - Neon Magenta Diamond
     const enemyGraphics = this.make.graphics({ x: 0, y: 0 });
-    enemyGraphics.fillStyle(0xf44336, 1);
-    enemyGraphics.fillCircle(16, 16, 16);
-    enemyGraphics.generateTexture('enemy', 32, 32);
+    const eSize = 32;
+    enemyGraphics.lineStyle(2, 0xff00ff, 1);
+    enemyGraphics.fillStyle(0xff00ff, 0.2);
+
+    // Diamond shape
+    enemyGraphics.beginPath();
+    enemyGraphics.moveTo(eSize / 2, 0);
+    enemyGraphics.lineTo(eSize, eSize / 2);
+    enemyGraphics.lineTo(eSize / 2, eSize);
+    enemyGraphics.lineTo(0, eSize / 2);
+    enemyGraphics.closePath();
+    enemyGraphics.strokePath();
+    enemyGraphics.fillPath();
+
+    // Pulse core
+    enemyGraphics.fillStyle(0xff00ff, 0.8);
+    enemyGraphics.fillCircle(eSize / 2, eSize / 2, 6);
+
+    enemyGraphics.generateTexture('enemy', eSize, eSize);
     enemyGraphics.destroy();
 
-    // Shard
+    // Shard - Crystalline Cyan
     const shardGraphics = this.make.graphics({ x: 0, y: 0 });
-    shardGraphics.fillStyle(0x4caf50, 1);
-    shardGraphics.fillTriangle(8, 0, 16, 8, 8, 16);
-    shardGraphics.fillTriangle(8, 0, 0, 8, 8, 16);
+    shardGraphics.lineStyle(1, 0x00f3ff, 1);
+    shardGraphics.fillStyle(0x00f3ff, 0.4);
+    shardGraphics.beginPath();
+    shardGraphics.moveTo(8, 0);
+    shardGraphics.lineTo(16, 8);
+    shardGraphics.lineTo(8, 16);
+    shardGraphics.lineTo(0, 8);
+    shardGraphics.closePath();
+    shardGraphics.strokePath();
+    shardGraphics.fillPath();
     shardGraphics.generateTexture('shard', 16, 16);
     shardGraphics.destroy();
   }

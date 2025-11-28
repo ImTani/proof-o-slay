@@ -29,14 +29,14 @@ export class PowerUpManager {
    */
   activatePowerUp(
     entity: Phaser.Physics.Arcade.Sprite,
-    type: PowerUpType
+    type: PowerUpType,
+    currentTime: number
   ): void {
     const powerUpComp = entity.getData('powerUp') as PowerUpComponent;
     if (!powerUpComp) return;
 
     const config = POWERUP_CONFIG[type];
-    const now = Date.now();
-    const endTime = now + config.duration;
+    const endTime = currentTime + config.duration;
 
     // Check if this power-up type is already active
     const existingIndex = powerUpComp.activePowerUps.findIndex(p => p.type === type);
@@ -62,15 +62,13 @@ export class PowerUpManager {
    * Update all active power-ups for an entity - remove expired buffs
    * Call this every frame in the scene's update loop
    */
-  update(entity: Phaser.Physics.Arcade.Sprite): void {
+  update(entity: Phaser.Physics.Arcade.Sprite, currentTime: number): void {
     const powerUpComp = entity.getData('powerUp') as PowerUpComponent;
     if (!powerUpComp) return;
 
-    const now = Date.now();
-
     // Filter out expired power-ups
     powerUpComp.activePowerUps = powerUpComp.activePowerUps.filter(
-      powerUp => powerUp.endTime > now
+      powerUp => powerUp.endTime > currentTime
     );
   }
 
@@ -159,14 +157,13 @@ export class PowerUpManager {
   /**
    * Get all active power-ups for UI display
    */
-  getActivePowerUps(entity: Phaser.Physics.Arcade.Sprite): Array<{ type: PowerUpType, timeRemaining: number }> {
+  getActivePowerUps(entity: Phaser.Physics.Arcade.Sprite, currentTime: number): Array<{ type: PowerUpType, timeRemaining: number }> {
     const powerUpComp = entity.getData('powerUp') as PowerUpComponent;
     if (!powerUpComp) return [];
 
-    const now = Date.now();
     return powerUpComp.activePowerUps.map(p => ({
       type: p.type,
-      timeRemaining: Math.max(0, p.endTime - now),
+      timeRemaining: Math.max(0, p.endTime - currentTime),
     }));
   }
 

@@ -132,7 +132,8 @@ coverage/
 
 .github
 
-# Ignore all markdown files
-*.md
-# Except the repository README
-!README.md
+# Adding .md files back in for Antigravity purposes.
+# # Ignore all markdown files
+# *.md
+# # Except the repository README
+# !README.md
