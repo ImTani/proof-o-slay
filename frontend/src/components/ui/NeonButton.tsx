@@ -9,6 +9,32 @@ function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
 }
 
+/**
+ * NeonButton Component
+ * Cyberpunk-styled button with tech corners, neon glow effects, and scanlines
+ * 
+ * VARIANT SEMANTICS:
+ * - `primary`: Default CTAs and main actions (cyan) - Use for standard interactions like "Purchase", "Confirm", "Continue"
+ * - `secondary`: Supporting actions (white) - Use for alternative actions like "Cancel", "Back"
+ * - `accent`: Special event CTAs (purple) - Use sparingly for unique features like JackpotScene "Enter Event"
+ * - `success`: Positive confirmations and commitment actions (green) - Use for high-stakes positive actions like "Stake", "Upgrade"
+ * - `warning`: Caution actions requiring attention (yellow) - Use when action needs extra consideration like "Unstake"
+ * - `danger`: Destructive or irreversible actions (red) - Use for actions that cannot be undone
+ * - `ghost`: Subtle actions without strong border (transparent) - Use for tertiary actions
+ * 
+ * USAGE GUIDELINES:
+ * - Default to `primary` for most CTAs throughout the Hub
+ * - Use `success` for staking, upgrading, purchasing (positive commitment)
+ * - Use `accent` only for special events or differentiated experiences
+ * - Use `warning` when user should pause before acting
+ * - Avoid mixing too many variant colors on the same screen
+ * 
+ * EXAMPLES:
+ * - ConsumablesShop: `variant="primary"` for "Purchase" button
+ * - StakingScene: `variant="success"` for "Initiate Stake" (high-stakes action)
+ * - JackpotScene: `variant="accent"` for "Enter Jackpot Run" (special event)
+ * - ForgeUI: Dynamic variant based on state (success when converting, warning when insufficient)
+ */
 interface NeonButtonProps extends Omit<HTMLMotionProps<"button">, "children"> {
     children: React.ReactNode;
     variant?: 'primary' | 'secondary' | 'accent' | 'danger' | 'warning' | 'success' | 'ghost';

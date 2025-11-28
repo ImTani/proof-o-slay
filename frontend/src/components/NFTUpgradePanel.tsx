@@ -6,7 +6,10 @@ import { CONTRACT_CONFIG, NFT_COSTS, calculateUpgradeCost, calculateExponentialB
 import { NeonButton } from './ui/NeonButton';
 import { CyberIcon } from './ui/CyberIcon';
 import { GlassPanel } from './ui/GlassPanel';
+import { StatusBadge } from './ui/StatusBadge';
+import { ScanlineEffect } from './ui/ScanlineEffect';
 import { CircleDot, Heart, Footprints, Eye, Clover, AlertTriangle, CheckCircle } from 'lucide-react';
+import { SPRING_CONFIG, STIFF_SPRING, COLORS, SPACING, TYPOGRAPHY, HOVER_STATES } from '../lib/designTokens';
 
 /**
  * NFTUpgradePanel Component
@@ -16,9 +19,7 @@ import { CircleDot, Heart, Footprints, Eye, Clover, AlertTriangle, CheckCircle }
  * AAA Polish: Spring physics, scanlines, tech decorators, magnetic micro-interactions
  */
 
-// Spring physics constants for AAA feel (matching ForgeUI + ConsumablesShop)
-const SPRING_CONFIG = { type: "spring" as const, stiffness: 300, damping: 30 };
-const STIFF_SPRING = { type: "spring" as const, stiffness: 400, damping: 25 };
+// Design tokens imported from centralized file
 
 type NFTType = 'PowerRing' | 'VitalityAmulet' | 'SwiftBoots' | 'MysticLens' | 'LuckyPendant';
 
@@ -115,6 +116,13 @@ export function NFTUpgradePanel() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+
+    // Simulate loading NFT data
+    useState(() => {
+        const timer = setTimeout(() => setIsLoading(false), 1000);
+        return () => clearTimeout(timer);
+    });
 
     // Query owned NFTs (simplified for now - would need proper queries per NFT type)
     // For MVP, we'll track ownership in local state or show "coming soon" message
@@ -223,6 +231,28 @@ export function NFTUpgradePanel() {
             setIsProcessing(false);
         }
     };
+
+    if (isLoading) {
+        return (
+            <div className="w-full max-w-7xl mx-auto p-8 font-neon">
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={SPRING_CONFIG}
+                    className="flex flex-col items-center justify-center gap-4 py-20"
+                >
+                    <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                        className="w-12 h-12 border-2 border-purple-500 border-t-transparent rounded-full"
+                    />
+                    <p className="text-cyan-500/60 font-mono text-sm tracking-widest uppercase">
+                        Scanning neural augmentations...
+                    </p>
+                </motion.div>
+            </div>
+        );
+    }
 
     if (!currentAccount) {
         return (
@@ -440,12 +470,8 @@ const NFTCard = ({
                     className={`absolute inset-0 bg-gradient-to-br ${colorMap[info.glow]} pointer-events-none rounded-sm`}
                 />
 
-                {/* Hover Scanline Effect */}
-                <motion.div
-                    className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-500/5 to-transparent opacity-0 group-hover:opacity-100 pointer-events-none"
-                    animate={{ y: ['-100%', '100%'] }}
-                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                />
+                {/* Scanline on Hover */}
+                <ScanlineEffect type="animated" color="cyan-500" opacity={0.05} duration={2} />
 
                 {/* Icon with Hover Rotation */}
                 <motion.div
@@ -484,7 +510,7 @@ const NFTCard = ({
                     {owned ? (
                         <>
                             {/* Level Display */}
-                            <div className="bg-black/40 rounded p-3 border border-white/5">
+                            <div className="bg-black/40 rounded p-3 border border-white/10">
                                 <div className="flex justify-between mb-2 text-xs">
                                     <span className="text-cyan-500/50 uppercase tracking-wider font-mono">Level</span>
                                     <span className="font-bold font-mono text-white">
@@ -548,26 +574,7 @@ const NFTCard = ({
 
                             {/* Max Level Badge */}
                             {isMaxLevel && (
-                                <motion.div
-                                    animate={{
-                                        boxShadow: [
-                                            '0 0 10px rgba(234,179,8,0.2)',
-                                            '0 0 20px rgba(234,179,8,0.4)',
-                                            '0 0 10px rgba(234,179,8,0.2)',
-                                        ]
-                                    }}
-                                    transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
-                                    className="bg-yellow-500/20 border border-yellow-500/50 text-yellow-400 p-3 rounded text-center font-bold text-sm tracking-widest uppercase"
-                                >
-                                    <div className="flex items-center justify-center gap-2">
-                                        <motion.span
-                                            animate={{ opacity: [0.5, 1, 0.5] }}
-                                            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                                            className="w-1.5 h-1.5 bg-yellow-500 rounded-full"
-                                        />
-                                        MAX LEVEL
-                                    </div>
-                                </motion.div>
+                                <StatusBadge variant="maxLevel" />
                             )}
                         </>
                     ) : (

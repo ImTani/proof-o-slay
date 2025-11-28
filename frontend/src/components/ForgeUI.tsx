@@ -52,7 +52,7 @@ export function ForgeUI({ pendingShards, onForgeComplete }: ForgeUIProps) {
             tx.moveCall({
                 target: `${CONTRACT_CONFIG.PACKAGE_ID}::${CONTRACT_CONFIG.MODULE_NAME}::forge_tokens`,
                 arguments: [
-                    tx.object(CONTRACT_CONFIG.TREASURY_CAP_ID),
+                    tx.object(CONTRACT_CONFIG.TREASURY_ID),
                     tx.pure.u64(rawAmount),
                 ],
             });
@@ -83,6 +83,18 @@ export function ForgeUI({ pendingShards, onForgeComplete }: ForgeUIProps) {
 
     return (
         <div className="w-full max-w-3xl mx-auto p-8">
+            {/* Header Description */}
+            <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={SPRING_CONFIG}
+                className="mb-8"
+            >
+                <p className="text-cyan-500/60 font-mono text-sm leading-relaxed max-w-3xl">
+                    Convert raw battle shards into refined $SLAY tokens. The Honor Protocol ensures a 1:1 conversion rate for your hard-earned rewards.
+                </p>
+            </motion.div>
+
             {/* Conversion Visual - AAA Polish */}
             <div className="flex items-center justify-center gap-6 mb-10">
                 {/* Input: Shards */}
@@ -107,7 +119,7 @@ export function ForgeUI({ pendingShards, onForgeComplete }: ForgeUIProps) {
                         </div>
                         <div className="text-center">
                             <motion.div
-                                className="text-4xl font-mono font-bold text-blue-400 drop-shadow-[0_0_12px_rgba(96,165,250,0.6)] group-hover:drop-shadow-[0_0_18px_rgba(96,165,250,0.8)] transition-all"
+                                className="text-4xl font-mono font-bold text-blue-400 drop-shadow-[0_0_12px_rgba(96,165,250,0.5)] group-hover:drop-shadow-[0_0_18px_rgba(96,165,250,0.6)] transition-all"
                                 whileHover={{ scale: 1.05, transition: STIFF_SPRING }}
                             >
                                 {pendingShards.toLocaleString()}
@@ -186,7 +198,7 @@ export function ForgeUI({ pendingShards, onForgeComplete }: ForgeUIProps) {
                         </div>
                         <div className="text-center">
                             <motion.div
-                                className="text-4xl font-mono font-bold text-yellow-400 drop-shadow-[0_0_12px_rgba(250,204,21,0.6)] group-hover:drop-shadow-[0_0_18px_rgba(250,204,21,0.8)] transition-all"
+                                className="text-4xl font-mono font-bold text-yellow-400 drop-shadow-[0_0_12px_rgba(250,204,21,0.5)] group-hover:drop-shadow-[0_0_18px_rgba(250,204,21,0.6)] transition-all"
                                 whileHover={{ scale: 1.05, transition: STIFF_SPRING }}
                             >
                                 {pendingShards.toLocaleString()}

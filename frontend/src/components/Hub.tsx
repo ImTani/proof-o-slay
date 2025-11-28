@@ -12,16 +12,18 @@ import { NeonButton } from './ui/NeonButton';
 import { GlassPanel } from './ui/GlassPanel';
 import { CyberIcon } from './ui/CyberIcon';
 import { Hammer, Package, Crosshair, Cpu, TrendingUp, Ticket, ArrowLeft } from 'lucide-react';
+import { SPRING_CONFIG, STIFF_SPRING, TYPOGRAPHY, HOVER_STATES, ACTIVE_STATES, DURATIONS } from '../lib/designTokens';
 
 interface HubProps {
     shards: number;
     onStartRun: () => void;
     onForgeComplete: () => void;
+    onSpendShards: (amount: number) => void;
 }
 
 type HubView = 'main' | 'forge' | 'consumables' | 'weapons' | 'staking' | 'jackpot' | 'nfts';
 
-export const Hub = ({ shards, onStartRun, onForgeComplete }: HubProps) => {
+export const Hub = ({ shards, onStartRun, onForgeComplete, onSpendShards }: HubProps) => {
     const [view, setView] = useState<HubView>('main');
 
     const menuItems = [
@@ -29,7 +31,7 @@ export const Hub = ({ shards, onStartRun, onForgeComplete }: HubProps) => {
         { id: 'consumables', label: 'SUPPLY DEPOT', icon: Package, color: 'text-cyan-400', glow: 'cyan', desc: 'Purchase Consumables' },
         { id: 'weapons', label: 'ARMORY', icon: Crosshair, color: 'text-red-400', glow: 'red', desc: 'Unlock New Weapons' },
         { id: 'nfts', label: 'CYBERNETICS', icon: Cpu, color: 'text-purple-400', glow: 'purple', desc: 'Upgrade Stats (NFTs)' },
-        { id: 'staking', label: 'RISK ASSESSMENT', icon: TrendingUp, color: 'text-green-400', glow: 'green', desc: 'Stake $SLAY for Runs' },
+        { id: 'staking', label: 'STAKES PROTOCOL', icon: TrendingUp, color: 'text-green-400', glow: 'green', desc: 'Stake $SLAY for Runs' },
         { id: 'jackpot', label: 'JACKPOT RUN', icon: Ticket, color: 'text-pink-400', glow: 'magenta', desc: 'Progressive Multiplier' },
     ];
 
@@ -40,24 +42,24 @@ export const Hub = ({ shards, onStartRun, onForgeComplete }: HubProps) => {
             <motion.header
                 initial={{ opacity: 0, y: -30 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ type: "spring", stiffness: 300, damping: 30, delay: 0.1 }}
+                transition={{ ...SPRING_CONFIG, delay: 0.1 }}
                 className="flex-none p-8 flex items-start gap-8 z-20"
             >
                 <div className="flex-1">
-                    <h1 className="text-5xl font-black tracking-[0.2em] text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-white to-cyan-400 animate-pulse drop-shadow-glow-cyan">
+                    <h1 className="text-5xl font-black tracking-[0.25em] text-white/90 drop-shadow-[0_0_20px_rgba(6,182,212,0.4)]">
                         COMMAND CENTER
                     </h1>
-                    <div className="text-xs text-cyan-500/60 font-mono mt-2 flex gap-4 uppercase tracking-widest">
+                    <div className={`${TYPOGRAPHY.tech.label} text-cyan-500/50 mt-2 flex gap-4`}>
                         <span>UNIT STATUS: ONLINE</span>
                         <span>SECURE CONNECTION</span>
                     </div>
                 </div>
                 <div className="flex-none flex gap-4">
                     <div>
-                        <div className="text-xs text-cyan-500/60 uppercase tracking-widest mb-2">Shards</div>
-                        <GlassPanel className="px-6 py-2 border-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.15)]" variant="thin">
+                        <div className={`${TYPOGRAPHY.tech.decorator} text-cyan-500/40 mb-2`}>RESOURCE.SHARDS</div>
+                        <GlassPanel className="px-6 py-2 border-yellow-500/20 shadow-[0_0_15px_rgba(250,204,21,0.1)]" variant="thin">
                             <div className="text-3xl font-mono font-bold text-yellow-400 drop-shadow-[0_0_10px_rgba(250,204,21,0.5)]">
-                                {shards.toLocaleString()} <span className="text-sm text-yellow-500/50">SHARDS</span>
+                                {shards.toLocaleString()} <span className="text-xs text-yellow-500/50 tracking-wider">SHARDS</span>
                             </div>
                         </GlassPanel>
                     </div>
@@ -74,7 +76,7 @@ export const Hub = ({ shards, onStartRun, onForgeComplete }: HubProps) => {
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0, y: -20 }}
-                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                            transition={SPRING_CONFIG}
                             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto pt-8 my-auto"
                         >
                             {menuItems.map((item, index) => (
@@ -85,27 +87,19 @@ export const Hub = ({ shards, onStartRun, onForgeComplete }: HubProps) => {
                                         opacity: 1,
                                         y: 0,
                                         transition: {
-                                            type: "spring",
-                                            stiffness: 300,
-                                            damping: 30,
+                                            ...SPRING_CONFIG,
                                             delay: index * 0.05
                                         }
                                     }}
                                 >
                                     <GlassPanel
                                         onClick={() => setView(item.id as HubView)}
-                                        className="cursor-pointer group p-0 min-h-[240px] border-white/5 hover:border-cyan-500/40 shadow-[0_0_15px_rgba(0,0,0,0.3)] hover:shadow-[0_0_30px_rgba(6,182,212,0.15)] transition-shadow"
-                                        whileHover={{
-                                            scale: 1.02,
-                                            transition: { type: "spring", stiffness: 400, damping: 25 }
-                                        }}
-                                        whileTap={{
-                                            scale: 0.98,
-                                            transition: { type: "spring", stiffness: 500, damping: 30 }
-                                        }}
+                                        className="cursor-pointer group p-0 min-h-[240px] border-white/10 hover:border-cyan-500/40 shadow-[0_0_15px_rgba(0,0,0,0.3)] hover:shadow-[0_0_30px_rgba(6,182,212,0.15)] transition-shadow"
+                                        whileHover={HOVER_STATES.buttonScale}
+                                        whileTap={ACTIVE_STATES.microScale}
                                     >
                                         {/* Card Header - System Label */}
-                                        <div className="w-full flex justify-between items-center border-b border-white/5 px-4 py-2 bg-white/[0.02]">
+                                        <div className="w-full flex justify-between items-center border-b border-white/10 px-4 py-2 bg-white/[0.02]">
                                             <span className="text-[9px] font-mono text-cyan-500/40 tracking-widest uppercase">
                                                 SYS.MODULE.{item.id.toUpperCase()}
                                             </span>
@@ -138,7 +132,7 @@ export const Hub = ({ shards, onStartRun, onForgeComplete }: HubProps) => {
                                                     className={`text-4xl ${item.color} drop-shadow-holo`}
                                                     whileHover={{
                                                         scale: 1.15,
-                                                        transition: { type: "spring", stiffness: 400, damping: 20 }
+                                                        transition: STIFF_SPRING
                                                     }}
                                                 >
                                                     <CyberIcon icon={item.icon} glowColor={item.glow as any} className="w-12 h-12" />
@@ -146,7 +140,7 @@ export const Hub = ({ shards, onStartRun, onForgeComplete }: HubProps) => {
                                                 <motion.div
                                                     initial={{ opacity: 0, x: -5 }}
                                                     whileHover={{ opacity: 1, x: 0 }}
-                                                    transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                                                    transition={SPRING_CONFIG}
                                                     className="text-cyan-500 font-mono text-xs tracking-widest"
                                                 >
                                                     [ACCESS]
@@ -157,7 +151,7 @@ export const Hub = ({ shards, onStartRun, onForgeComplete }: HubProps) => {
                                                 <motion.h3
                                                     className="text-xl font-bold tracking-widest uppercase text-white/90 group-hover:text-cyan-100"
                                                     whileHover={{ x: 2 }}
-                                                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                                    transition={SPRING_CONFIG}
                                                 >
                                                     {item.label}
                                                 </motion.h3>
@@ -168,7 +162,7 @@ export const Hub = ({ shards, onStartRun, onForgeComplete }: HubProps) => {
                                         </div>
 
                                         {/* Card Footer - Status */}
-                                        <div className="w-full px-4 py-2 border-t border-white/5 bg-white/[0.02] opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                        <div className="w-full px-4 py-2 border-t border-white/10 bg-white/[0.02] opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                                             <span className="text-[9px] text-green-500/50 font-mono tracking-wider uppercase flex items-center gap-2">
                                                 <span className="w-1 h-1 bg-green-500 rounded-full animate-pulse" />
                                                 READY
@@ -184,16 +178,16 @@ export const Hub = ({ shards, onStartRun, onForgeComplete }: HubProps) => {
                             initial={{ opacity: 0, x: 50 }}
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: -50 }}
-                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                            transition={SPRING_CONFIG}
                             className="h-full relative max-w-7xl mx-auto w-full"
                         >
                             {/* Unified Window Panel - Matching MainMenu Aesthetic */}
                             <GlassPanel
                                 variant="heavy"
-                                className="w-full flex flex-col gap-0 p-0 overflow-hidden border-white/5 shadow-2xl shadow-black/50 !bg-black/30"
+                                className="w-full flex flex-col gap-0 p-0 overflow-hidden border-white/10 shadow-2xl shadow-black/50 !bg-black/30"
                             >
                                 {/* Window Header with Close Button */}
-                                <div className="w-full flex justify-between items-center border-b border-white/5 px-6 py-4 bg-white/[0.02]">
+                                <div className="w-full flex justify-between items-center border-b border-white/10 px-6 py-4 bg-white/[0.02]">
                                     <div className="flex-1">
                                         <span className="text-[10px] font-mono text-cyan-500/60 tracking-widest uppercase">
                                             NAV.PATH :: {
@@ -201,7 +195,7 @@ export const Hub = ({ shards, onStartRun, onForgeComplete }: HubProps) => {
                                                     view === 'consumables' ? 'SUPPLY DEPOT' :
                                                         view === 'weapons' ? 'ARMORY' :
                                                             view === 'nfts' ? 'CYBERNETICS' :
-                                                                view === 'staking' ? 'RISK ASSESSMENT' :
+                                                                view === 'staking' ? 'STAKES PROTOCOL' :
                                                                     view === 'jackpot' ? 'JACKPOT RUN' : ''
                                             }
                                         </span>
@@ -213,7 +207,7 @@ export const Hub = ({ shards, onStartRun, onForgeComplete }: HubProps) => {
                                             <motion.span
                                                 initial={{ opacity: 0, x: -5 }}
                                                 animate={{ opacity: 1, x: 0 }}
-                                                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                                transition={SPRING_CONFIG}
                                                 className="font-mono tracking-widest uppercase text-cyan-400 font-bold text-lg drop-shadow-[0_0_8px_rgba(6,182,212,0.6)]"
                                             >
                                                 {
@@ -221,7 +215,7 @@ export const Hub = ({ shards, onStartRun, onForgeComplete }: HubProps) => {
                                                         view === 'consumables' ? 'SUPPLY DEPOT' :
                                                             view === 'weapons' ? 'ARMORY' :
                                                                 view === 'nfts' ? 'CYBERNETICS' :
-                                                                    view === 'staking' ? 'RISK ASSESSMENT' :
+                                                                    view === 'staking' ? 'STAKES PROTOCOL' :
                                                                         view === 'jackpot' ? 'JACKPOT RUN' : ''
                                                 }
                                             </motion.span>
@@ -245,11 +239,11 @@ export const Hub = ({ shards, onStartRun, onForgeComplete }: HubProps) => {
                                             whileHover={{
                                                 scale: 1.1,
                                                 rotate: 90,
-                                                transition: { type: "spring", stiffness: 400, damping: 25 }
+                                                transition: STIFF_SPRING
                                             }}
                                             whileTap={{
                                                 scale: 0.9,
-                                                transition: { type: "spring", stiffness: 500, damping: 30 }
+                                                transition: STIFF_SPRING
                                             }}
                                             className="text-cyan-500/50 hover:text-white transition-colors"
                                         >
@@ -263,7 +257,7 @@ export const Hub = ({ shards, onStartRun, onForgeComplete }: HubProps) => {
                                     <motion.div
                                         initial={{ opacity: 0, y: 20 }}
                                         animate={{ opacity: 1, y: 0 }}
-                                        transition={{ type: "spring", stiffness: 300, damping: 30, delay: 0.1 }}
+                                        transition={{ ...SPRING_CONFIG, delay: 0.1 }}
                                     >
                                         {view === 'forge' && (
                                             <ForgeUI
@@ -274,7 +268,7 @@ export const Hub = ({ shards, onStartRun, onForgeComplete }: HubProps) => {
                                         {view === 'consumables' && (
                                             <ConsumablesShop
                                                 shards={shards}
-                                                onPurchase={(id, cost) => console.log('Buy', id, cost)}
+                                                onPurchase={(id, cost) => onSpendShards(cost)}
                                                 ownedItems={[]}
                                             />
                                         )}
@@ -298,7 +292,6 @@ export const Hub = ({ shards, onStartRun, onForgeComplete }: HubProps) => {
                                         )}
                                         {view === 'jackpot' && (
                                             <JackpotScene
-                                                tickets={1} // TODO: Fetch real ticket count
                                                 onStartJackpot={() => {
                                                     console.log('Jackpot Run Started');
                                                     onStartRun();
@@ -310,7 +303,7 @@ export const Hub = ({ shards, onStartRun, onForgeComplete }: HubProps) => {
                                 </div>
 
                                 {/* Status Bar Footer */}
-                                <div className="w-full border-t border-white/5 bg-white/[0.02] px-6 py-3 flex items-center justify-between">
+                                <div className="w-full border-t border-white/10 bg-white/[0.02] px-6 py-3 flex items-center justify-between">
                                     <div className="flex items-center gap-6 text-[9px] font-mono text-cyan-500/40 uppercase tracking-widest">
                                         <span className="flex items-center gap-2">
                                             <motion.div
@@ -344,19 +337,13 @@ export const Hub = ({ shards, onStartRun, onForgeComplete }: HubProps) => {
                         className="flex-none p-6 bg-gradient-to-t from-black via-black/80 to-transparent flex justify-center z-20"
                     >
                         <motion.div
-                            whileHover={{
-                                scale: 1.05,
-                                transition: { type: "spring", stiffness: 400, damping: 25 }
-                            }}
-                            whileTap={{
-                                scale: 0.95,
-                                transition: { type: "spring", stiffness: 500, damping: 30 }
-                            }}
+                            whileHover={HOVER_STATES.buttonScale}
+                            whileTap={ACTIVE_STATES.microScale}
                         >
                             <NeonButton
                                 onClick={onStartRun}
                                 size="lg"
-                                className="px-24 py-6 text-2xl tracking-[0.2em] border-cyan-500 shadow-[0_0_30px_rgba(0,243,255,0.2)] hover:shadow-[0_0_50px_rgba(0,243,255,0.4)] transition-shadow"
+                                className="px-20 py-5 text-xl tracking-[0.25em] font-bold"
                             >
                                 INITIATE RUN
                             </NeonButton>
@@ -391,14 +378,14 @@ function HubBalanceDisplay() {
 
     return (
         <div>
-            <div className="text-xs text-cyan-500/60 uppercase tracking-widest mb-2">$SLAY Balance</div>
-            <GlassPanel className="px-6 py-2 border-green-500/30 shadow-[0_0_15px_rgba(74,222,128,0.15)]" variant="thin">
+            <div className={`${TYPOGRAPHY.tech.decorator} text-cyan-500/40 mb-2`}>BALANCE.$SLAY</div>
+            <GlassPanel className="px-6 py-2 border-green-500/20 shadow-[0_0_15px_rgba(74,222,128,0.1)]" variant="thin">
                 <div className="text-3xl font-mono font-bold text-green-400 drop-shadow-[0_0_10px_rgba(74,222,128,0.5)]">
                     {isLoading ? (
-                        <span className="text-sm text-green-500/50">LOADING...</span>
+                        <span className="text-xs text-green-500/50 tracking-wider">LOADING...</span>
                     ) : (
                         <>
-                            {formattedBalance.toFixed(2)} <span className="text-sm text-green-500/50">$SLAY</span>
+                            {formattedBalance.toFixed(2)} <span className="text-xs text-green-500/50 tracking-wider">$SLAY</span>
                         </>
                     )}
                 </div>

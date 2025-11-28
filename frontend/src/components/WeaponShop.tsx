@@ -65,6 +65,13 @@ export const WeaponShop = ({ ownedWeapons, onPurchaseSuccess }: WeaponShopProps)
     const currentAccount = useCurrentAccount();
     const { mutate: signAndExecute } = useSignAndExecuteTransaction();
     const [isProcessing, setIsProcessing] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+
+    // Simulate loading weapon data
+    useState(() => {
+        const timer = setTimeout(() => setIsLoading(false), 1000);
+        return () => clearTimeout(timer);
+    });
 
     const handlePurchase = async () => {
         if (!currentAccount || !CONTRACT_CONFIG.PACKAGE_ID) return;
@@ -157,45 +164,56 @@ export const WeaponShop = ({ ownedWeapons, onPurchaseSuccess }: WeaponShopProps)
 
                         {/* Scanlines Over Hologram - CRT Screen Effect */}
                         <div className="absolute inset-0 scanlines opacity-20 pointer-events-none z-10" />
-                        <AnimatePresence mode="wait">
-                            <motion.div
-                                key={selectedWeapon.id}
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                transition={SPRING_CONFIG}
-                                className="w-full h-full"
-                            >
-                                <Suspense fallback={
-                                    <div className="w-full h-full flex items-center justify-center">
-                                        <motion.div
-                                            animate={{ rotate: 360 }}
-                                            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                                            className="w-12 h-12 border-2 border-cyan-500 border-t-transparent rounded-full"
-                                        />
-                                    </div>
-                                }>
-                                    <Canvas camera={{ position: [0, 0, 2.5], fov: 50 }}>
-                                        <ambientLight intensity={0.5} />
-                                        <pointLight position={[10, 10, 10]} intensity={1} />
-                                        <WeaponModel3D
-                                            type={selectedWeapon.model}
-                                            color={selectedWeapon.glow}
-                                        />
-                                        <OrbitControls
-                                            enableZoom={true}
-                                            minDistance={2}
-                                            maxDistance={5}
-                                            enablePan={false}
-                                            autoRotate
-                                            autoRotateSpeed={2}
-                                            minPolarAngle={Math.PI / 4}
-                                            maxPolarAngle={Math.PI - Math.PI / 4}
-                                        />
-                                    </Canvas>
-                                </Suspense>
-                            </motion.div>
-                        </AnimatePresence>
+
+                        {isLoading ? (
+                            <div className="w-full h-full flex items-center justify-center">
+                                <motion.div
+                                    animate={{ rotate: 360 }}
+                                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                                    className="w-12 h-12 border-2 border-cyan-500 border-t-transparent rounded-full"
+                                />
+                            </div>
+                        ) : (
+                            <AnimatePresence mode="wait">
+                                <motion.div
+                                    key={selectedWeapon.id}
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    transition={SPRING_CONFIG}
+                                    className="w-full h-full"
+                                >
+                                    <Suspense fallback={
+                                        <div className="w-full h-full flex items-center justify-center">
+                                            <motion.div
+                                                animate={{ rotate: 360 }}
+                                                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                                                className="w-12 h-12 border-2 border-cyan-500 border-t-transparent rounded-full"
+                                            />
+                                        </div>
+                                    }>
+                                        <Canvas camera={{ position: [0, 0, 2.5], fov: 50 }}>
+                                            <ambientLight intensity={0.5} />
+                                            <pointLight position={[10, 10, 10]} intensity={1} />
+                                            <WeaponModel3D
+                                                type={selectedWeapon.model}
+                                                color={selectedWeapon.glow}
+                                            />
+                                            <OrbitControls
+                                                enableZoom={true}
+                                                minDistance={2}
+                                                maxDistance={5}
+                                                enablePan={false}
+                                                autoRotate
+                                                autoRotateSpeed={2}
+                                                minPolarAngle={Math.PI / 4}
+                                                maxPolarAngle={Math.PI - Math.PI / 4}
+                                            />
+                                        </Canvas>
+                                    </Suspense>
+                                </motion.div>
+                            </AnimatePresence>
+                        )}
 
                         {/* Tech Corner Labels */}
                         <div className="absolute top-4 left-4 text-[9px] font-mono text-cyan-500/30 tracking-widest z-10">

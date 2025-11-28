@@ -41,15 +41,15 @@ module proof_o_slay::proof_o_slay_tests {
         ts::return_to_sender(scenario, cap);
     }
     
-    /// Mint tokens for a player
+    /// Mint tokens for a player (simulates forging)
     fun mint_tokens_for_player(scenario: &mut Scenario, player: address, amount: u64) {
         ts::next_tx(scenario, ADMIN);
         {
-            let mut cap = ts::take_from_sender<TreasuryCap<PROOF_O_SLAY>>(scenario);
+            let mut treasury = ts::take_shared<Treasury>(scenario);
             ts::next_tx(scenario, player);
-            proof_o_slay::forge_tokens(&mut cap, amount, ts::ctx(scenario));
+            proof_o_slay::forge_tokens(&mut treasury, amount, ts::ctx(scenario));
             ts::next_tx(scenario, ADMIN);
-            ts::return_to_sender(scenario, cap);
+            ts::return_shared(treasury);
         };
     }
 
@@ -66,11 +66,12 @@ module proof_o_slay::proof_o_slay_tests {
             assert!(ts::has_most_recent_for_sender<TreasuryCap<PROOF_O_SLAY>>(&scenario), 0);
         };
         
-        // Treasury should be shared
+        // Treasury should be shared and have initial supply
         ts::next_tx(&mut scenario, ADMIN);
         {
             let treasury = ts::take_shared<Treasury>(&scenario);
-            assert!(proof_o_slay::treasury_balance(&treasury) == 0, 1);
+            // 1,000,000 * 10^9 = 1000000000000000
+            assert!(proof_o_slay::treasury_balance(&treasury) == 1000000000000000, 1);
             ts::return_shared(treasury);
         };
         
@@ -85,9 +86,9 @@ module proof_o_slay::proof_o_slay_tests {
         // Player forges 100 shards
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 100, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 100, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         // Verify player received 100 SLAY tokens
@@ -108,9 +109,9 @@ module proof_o_slay::proof_o_slay_tests {
         
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 500, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 500, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         ts::next_tx(&mut scenario, ADMIN);
@@ -131,9 +132,9 @@ module proof_o_slay::proof_o_slay_tests {
         
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 0, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 0, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         ts::end(scenario);
@@ -147,9 +148,9 @@ module proof_o_slay::proof_o_slay_tests {
         
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 10001, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 10001, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         ts::end(scenario);
@@ -165,9 +166,9 @@ module proof_o_slay::proof_o_slay_tests {
         // Mint 300 SLAY
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 300, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 300, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         // Buy Power Ring
@@ -178,7 +179,7 @@ module proof_o_slay::proof_o_slay_tests {
             
             proof_o_slay::buy_power_ring(&mut treasury, payment, ts::ctx(&mut scenario));
             
-            assert!(proof_o_slay::treasury_balance(&treasury) == 300, 0);
+            assert!(proof_o_slay::treasury_balance(&treasury) == 1000000000000000, 0);
             ts::return_shared(treasury);
         };
         
@@ -203,9 +204,9 @@ module proof_o_slay::proof_o_slay_tests {
         // Buy Power Ring L1 (300)
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 300, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 300, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         ts::next_tx(&mut scenario, ADMIN);
@@ -219,9 +220,9 @@ module proof_o_slay::proof_o_slay_tests {
         // Upgrade L1 → L2 (cost: 800)
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 800, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 800, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         ts::next_tx(&mut scenario, ADMIN);
@@ -243,9 +244,9 @@ module proof_o_slay::proof_o_slay_tests {
         // Upgrade L2 → L3 (cost: 1200)
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 1200, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 1200, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         ts::next_tx(&mut scenario, ADMIN);
@@ -276,9 +277,9 @@ module proof_o_slay::proof_o_slay_tests {
         // Buy Power Ring L1
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 300, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 300, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         ts::next_tx(&mut scenario, ADMIN);
@@ -292,9 +293,9 @@ module proof_o_slay::proof_o_slay_tests {
         // Upgrade L1 → L2
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 600, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 600, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         ts::next_tx(&mut scenario, ADMIN);
@@ -310,9 +311,9 @@ module proof_o_slay::proof_o_slay_tests {
         // Upgrade L2 → L3
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 1200, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 1200, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         ts::next_tx(&mut scenario, ADMIN);
@@ -328,9 +329,9 @@ module proof_o_slay::proof_o_slay_tests {
         // Upgrade L3 → L4
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 2400, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 2400, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         ts::next_tx(&mut scenario, ADMIN);
@@ -346,9 +347,9 @@ module proof_o_slay::proof_o_slay_tests {
         // Upgrade L4 → L5
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 4800, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 4800, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         ts::next_tx(&mut scenario, ADMIN);
@@ -364,9 +365,9 @@ module proof_o_slay::proof_o_slay_tests {
         // Try to upgrade L5 → L6 (should fail with EMaxLevelReached)
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 9999, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 9999, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         ts::next_tx(&mut scenario, ADMIN);
@@ -391,9 +392,9 @@ module proof_o_slay::proof_o_slay_tests {
         
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 400, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 400, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         ts::next_tx(&mut scenario, ADMIN);
@@ -425,9 +426,9 @@ module proof_o_slay::proof_o_slay_tests {
         // Buy L1
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 400, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 400, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         ts::next_tx(&mut scenario, ADMIN);
@@ -441,9 +442,9 @@ module proof_o_slay::proof_o_slay_tests {
         // Try to upgrade beyond L5 (should fail)
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 9999, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 9999, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         ts::next_tx(&mut scenario, ADMIN);
@@ -474,9 +475,9 @@ module proof_o_slay::proof_o_slay_tests {
         
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 500, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 500, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         ts::next_tx(&mut scenario, ADMIN);
@@ -509,9 +510,9 @@ module proof_o_slay::proof_o_slay_tests {
         
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 600, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 600, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         ts::next_tx(&mut scenario, ADMIN);
@@ -544,9 +545,9 @@ module proof_o_slay::proof_o_slay_tests {
         
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 800, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 800, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         ts::next_tx(&mut scenario, ADMIN);
@@ -580,9 +581,9 @@ module proof_o_slay::proof_o_slay_tests {
         // Buy Power Ring (300)
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 300, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 300, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         ts::next_tx(&mut scenario, ADMIN);
@@ -596,9 +597,9 @@ module proof_o_slay::proof_o_slay_tests {
         // Buy Vitality Amulet (400)
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 400, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 400, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         ts::next_tx(&mut scenario, ADMIN);
@@ -612,9 +613,9 @@ module proof_o_slay::proof_o_slay_tests {
         // Buy Swift Boots (500)
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 500, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 500, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         ts::next_tx(&mut scenario, ADMIN);
@@ -628,9 +629,9 @@ module proof_o_slay::proof_o_slay_tests {
         // Buy Mystic Lens (600)
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 600, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 600, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         ts::next_tx(&mut scenario, ADMIN);
@@ -644,9 +645,9 @@ module proof_o_slay::proof_o_slay_tests {
         // Buy Lucky Pendant (800)
         ts::next_tx(&mut scenario, ADMIN);
         {
-            let mut cap = take_treasury_cap(&mut scenario);
-            proof_o_slay::forge_tokens(&mut cap, 800, ts::ctx(&mut scenario));
-            return_treasury_cap(&mut scenario, cap);
+            let mut treasury = ts::take_shared<Treasury>(&scenario);
+            proof_o_slay::forge_tokens(&mut treasury, 800, ts::ctx(&mut scenario));
+            ts::return_shared(treasury);
         };
         
         ts::next_tx(&mut scenario, ADMIN);

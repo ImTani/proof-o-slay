@@ -1,12 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClientQuery } from '@mysten/dapp-kit';
+import { Transaction } from '@mysten/sui/transactions';
+import { CONTRACT_CONFIG } from '../lib/suiClient';
 import { NeonButton } from './ui/NeonButton';
 import { GlassPanel } from './ui/GlassPanel';
 import { CyberIcon } from './ui/CyberIcon';
-import { Ticket, Zap, Trophy, Skull, ArrowRight, AlertTriangle } from 'lucide-react';
+import { Ticket, Zap, Trophy, Skull, AlertTriangle } from 'lucide-react';
 
 interface JackpotSceneProps {
-    tickets: number;
     onStartJackpot: () => void;
     onBack: () => void;
 }
@@ -25,14 +27,91 @@ interface StatBoxProps {
 }
 
 interface RuleItemProps {
-    icon: React.ElementType;
+    icon: React.ComponentType<{ size?: number; className?: string }>;
     text: string;
     color: string;
     delay: number;
 }
 
-export const JackpotScene: React.FC<JackpotSceneProps> = ({ tickets, onStartJackpot }) => {
+/** ======== MAIN COMPONENT ======== */
+export const JackpotScene: React.FC<JackpotSceneProps> = ({ onStartJackpot, onBack }) => {
+    const [isProcessing, setIsProcessing] = useState(false);
+
+    const currentAccount = useCurrentAccount();
+    const { mutate: signAndExecute } = useSignAndExecuteTransaction();
+
+    // Query owned JackpotTickets
+    const { data: ticketObjects } = useSuiClientQuery(
+        'getOwnedObjects',
+        {
+            owner: currentAccount?.address || '',
+            filter: {
+                StructType: `${CONTRACT_CONFIG.PACKAGE_ID}::proof_o_slay::JackpotTicket`
+            }
+        },
+        {
+            enabled: !!currentAccount && !!CONTRACT_CONFIG.PACKAGE_ID
+        }
+    );
+
+    const tickets = ticketObjects?.data?.length || 0;
     const hasTicket = tickets > 0;
+
+    const handleStartJackpot = async () => {
+        if (!currentAccount || !CONTRACT_CONFIG.PACKAGE_ID) {
+            return;
+        }
+
+        if (!hasTicket) {
+            return;
+        }
+
+        setIsProcessing(true);
+
+        try {
+            const tx = new Transaction();
+            tx.setGasBudget(100000000);
+
+            // Get first ticket
+            const ticketId = ticketObjects?.data[0]?.data?.objectId;
+            if (!ticketId) {
+                setIsProcessing(false);
+                return;
+            }
+
+            // Split coins for stake (100 SLAY)
+            const [paymentCoin] = tx.splitCoins(tx.gas, [
+                tx.pure.u64(100 * 1_000_000_000)
+            ]);
+
+            // Call start_progressive_jackpot
+            tx.moveCall({
+                target: `${CONTRACT_CONFIG.PACKAGE_ID}::proof_o_slay::start_progressive_jackpot`,
+                arguments: [
+                    tx.object(CONTRACT_CONFIG.TREASURY_ID),
+                    paymentCoin,
+                    tx.object(ticketId)
+                ]
+            });
+
+            signAndExecute(
+                { transaction: tx },
+                {
+                    onSuccess: () => {
+                        setIsProcessing(false);
+                        onStartJackpot();
+                    },
+                    onError: (err) => {
+                        console.error('Jackpot start failed:', err);
+                        setIsProcessing(false);
+                    }
+                }
+            );
+        } catch (err) {
+            console.error('Error:', err);
+            setIsProcessing(false);
+        }
+    };
 
     return (
         <div className="w-full h-full p-8 relative overflow-hidden flex flex-col">
@@ -98,7 +177,7 @@ export const JackpotScene: React.FC<JackpotSceneProps> = ({ tickets, onStartJack
                                         <CyberIcon icon={Trophy} glowColor="cyan" size="xl" className="relative z-10" />
                                     </motion.div>
                                     <div>
-                                        <GlitchText text="JACKPOT RUN" className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-white to-cyan-400 tracking-widest" />
+                                        <GlitchText text="JACKPOT RUN" className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-pink-400 to-purple-500 tracking-widest" />
                                         <p className="text-cyan-500/50 font-mono text-sm tracking-[0.3em] uppercase mt-2">
                                             Infinite Progressive Multiplier
                                         </p>
@@ -119,6 +198,7 @@ export const JackpotScene: React.FC<JackpotSceneProps> = ({ tickets, onStartJack
                                         subtext="PER MINUTE"
                                         delay={0.25}
                                         highlight
+                                        isPink
                                     />
                                 </div>
 
@@ -224,9 +304,9 @@ export const JackpotScene: React.FC<JackpotSceneProps> = ({ tickets, onStartJack
                                 <NeonButton
                                     variant="accent"
                                     size="lg"
-                                    className="w-full h-full text-2xl tracking-[0.2em] relative overflow-hidden !border-cyan-500/50 hover:!border-cyan-400"
-                                    onClick={onStartJackpot}
-                                    disabled={!hasTicket}
+                                    className="w-full h-full text-2xl tracking-[0.2em] relative overflow-hidden !border-pink-500/50 hover:!border-pink-400"
+                                    onClick={handleStartJackpot}
+                                    disabled={!hasTicket || isProcessing}
                                 >
                                     <div className="relative z-10 flex flex-col items-center gap-2">
                                         <motion.span
@@ -240,7 +320,7 @@ export const JackpotScene: React.FC<JackpotSceneProps> = ({ tickets, onStartJack
                                             } : {}}
                                             transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                                         >
-                                            ENTER THE VOID
+                                            {isProcessing ? 'INITIATING...' : 'ENTER THE VOID'}
                                         </motion.span>
                                         <span className="text-[10px] font-mono text-cyan-300/60 tracking-widest uppercase">
                                             INITIATE SEQUENCE
@@ -295,7 +375,7 @@ export const JackpotScene: React.FC<JackpotSceneProps> = ({ tickets, onStartJack
                     className="text-[10px] text-white/30 text-center font-mono tracking-wider flex items-center justify-center gap-2"
                 >
                     <motion.div
-                        className="w-1 h-1 bg-red-500 rounded-full"
+                        className="w-1 h-1 bg-pink-500 rounded-full"
                         animate={{ opacity: [0.3, 1, 0.3] }}
                         transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                     />
@@ -321,7 +401,7 @@ const VoidBackground = () => {
                     scale: [1, 1.08, 1],
                 }}
                 transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                className="absolute top-[-20%] left-[-20%] w-[140%] h-[140%] bg-[radial-gradient(circle_at_center,rgba(6,182,212,0.08)_0%,transparent_60%)] blur-3xl"
+                className="absolute top-[-20%] left-[-20%] w-[140%] h-[140%] bg-[radial-gradient(circle_at_center,rgba(236,72,153,0.08)_0%,rgba(6,182,212,0.05)_40%,transparent_70%)] blur-3xl"
             />
 
             {/* Digital Rain / Particles */}
@@ -355,53 +435,65 @@ const GlitchText = ({ text, className }: { text: string; className?: string }) =
     );
 };
 
-const StatBox = ({ label, value, subtext, delay, highlight = false }: StatBoxProps) => (
-    <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ ...SPRING_CONFIG, delay }}
-        whileHover={{
-            scale: 1.03,
-            borderColor: highlight ? 'rgba(6,182,212,0.6)' : 'rgba(255,255,255,0.2)',
-            backgroundColor: 'rgba(6,182,212,0.15)',
-            transition: STIFF_SPRING
-        }}
-        className={`p-6 rounded-sm border group cursor-default relative overflow-hidden ${highlight
-                ? 'bg-cyan-500/10 border-cyan-500/40'
-                : 'bg-white/5 border-white/10'
-            }`}
-    >
-        {/* Scanline on Hover */}
-        <motion.div
-            className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-500/20 to-transparent opacity-0 group-hover:opacity-100 pointer-events-none"
-            animate={{ y: ['-100%', '100%'] }}
-            transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-        />
+const StatBox = ({ label, value, subtext, delay, highlight = false, isPink = false }: StatBoxProps & { isPink?: boolean }) => {
+    const borderColor = isPink ? 'border-pink-500/40' : 'border-cyan-500/40';
+    const bgColor = isPink ? 'bg-pink-500/10' : 'bg-cyan-500/10';
+    const textColor = isPink ? 'text-pink-400' : 'text-cyan-400';
+    const labelColor = isPink ? 'text-pink-500/60' : 'text-cyan-500/60';
+    const scanlineColor = isPink ? 'via-pink-500/20' : 'via-cyan-500/20';
+    const hoverTextColor = isPink ? 'group-hover:text-pink-500/50' : 'group-hover:text-cyan-500/50';
+    const glowRgba = isPink ? 'rgba(236,72,153' : 'rgba(6,182,212';
+    const hoverBorderRgba = isPink ? 'rgba(236,72,153,0.6)' : 'rgba(6,182,212,0.6)';
+    const hoverBgRgba = isPink ? 'rgba(236,72,153,0.15)' : 'rgba(6,182,212,0.15)';
 
-        <div className="relative z-10">
-            <div className="text-[10px] text-cyan-500/60 uppercase tracking-widest mb-2 font-mono">{label}</div>
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ ...SPRING_CONFIG, delay }}
+            whileHover={{
+                scale: 1.03,
+                borderColor: highlight ? hoverBorderRgba : 'rgba(255,255,255,0.2)',
+                backgroundColor: highlight ? hoverBgRgba : 'rgba(6,182,212,0.15)',
+                transition: STIFF_SPRING
+            }}
+            className={`p-6 rounded-sm border group cursor-default relative overflow-hidden ${highlight
+                ? `${bgColor} ${borderColor}`
+                : 'bg-white/5 border-white/10'
+                }`}
+        >
+            {/* Scanline on Hover */}
             <motion.div
-                className={`text-4xl font-black font-mono ${highlight
-                        ? 'text-cyan-400'
+                className={`absolute inset-0 bg-gradient-to-b from-transparent ${scanlineColor} to-transparent opacity-0 group-hover:opacity-100 pointer-events-none`}
+                animate={{ y: ['-100%', '100%'] }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+            />
+
+            <div className="relative z-10">
+                <div className={`text-[10px] uppercase tracking-widest mb-2 font-mono ${labelColor}`}>{label}</div>
+                <motion.div
+                    className={`text-4xl font-black font-mono ${highlight
+                        ? textColor
                         : 'text-white'
-                    }`}
-                animate={highlight ? {
-                    textShadow: [
-                        '0 0 10px rgba(6,182,212,0.3)',
-                        '0 0 20px rgba(6,182,212,0.6)',
-                        '0 0 10px rgba(6,182,212,0.3)',
-                    ]
-                } : {}}
-                transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
-            >
-                {value}
-            </motion.div>
-            <div className="text-[9px] text-white/30 uppercase tracking-widest mt-1 font-mono group-hover:text-cyan-500/50 transition-colors">
-                {subtext}
+                        }`}
+                    animate={highlight ? {
+                        textShadow: [
+                            `0 0 10px ${glowRgba},0.3)`,
+                            `0 0 20px ${glowRgba},0.6)`,
+                            `0 0 10px ${glowRgba},0.3)`,
+                        ]
+                    } : {}}
+                    transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+                >
+                    {value}
+                </motion.div>
+                <div className={`text-[9px] text-white/30 uppercase tracking-widest mt-1 font-mono ${hoverTextColor} transition-colors`}>
+                    {subtext}
+                </div>
             </div>
-        </div>
-    </motion.div>
-);
+        </motion.div>
+    );
+};
 
 const RuleItem = ({ icon: Icon, text, color, delay }: RuleItemProps) => (
     <motion.div

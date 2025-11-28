@@ -10,19 +10,19 @@
 
 ### Package ID
 ```
-0x0418717e68648ca25d5ede2d49897ec91e4687d67da69a1c048f7d7479e325f6
+0xfde1b33a2ef97c34cd2daadefd92eadd54eea36891493b5a6321e12901cd1f57
 ```
 
 ### TreasuryCap (Minting Authority)
 ```
-0x55dc52d3220b4d3fb5b73f50f3ecf004e9c6bb639b18576037e02135c206505e
+0xc7077b0fbeb030e9d1176dacd7c0ba1b6779351b9813a1c7a69c84aaefb39556
 ```
 **Type:** `TreasuryCap<PROOF_O_SLAY>`  
 **Owner:** Your wallet address
 
 ### Treasury (Shared Object - Collects Payments)
 ```
-0xdd10000e44d7130133edf05eb2607de0d96a2100d910c2cbc7bc603f7d0184e3
+0xba462631607ffa4bc18ccf8dc411e19d035ac0e19904f594337ab9fd68055a80
 ```
 **Type:** `Treasury`  
 **Status:** Shared object (anyone can interact)
@@ -36,7 +36,7 @@
 
 ### Upgrade Cap
 ```
-0x9b1892bb4bfc1b87ceb36f72f8c017a3f467e017796c76b25503130db0298080
+0x56ab0b40031e420a06785660fc5e3092126583fe78e2421694641093aea133bb
 ```
 **Type:** `UpgradeCap`  
 **Owner:** Your wallet address

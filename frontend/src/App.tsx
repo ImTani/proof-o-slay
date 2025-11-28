@@ -38,7 +38,16 @@ function App() {
   });
 
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
-  const [totalShards, setTotalShards] = useState(0); // Mock wallet balance for now
+  // Initialize shards from localStorage or default to 0
+  const [totalShards, setTotalShards] = useState(() => {
+    const saved = localStorage.getItem('proof_o_slay_shards');
+    return saved ? parseInt(saved, 10) : 0;
+  });
+
+  // Persist shards to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('proof_o_slay_shards', totalShards.toString());
+  }, [totalShards]);
 
   // Default to 'font-cyber' (Exo 2)
   useEffect(() => {
@@ -164,6 +173,7 @@ function App() {
             shards={totalShards}
             onStartRun={() => setGameState('class-select')}
             onForgeComplete={() => setTotalShards(0)} // Reset shards after forge (mock)
+            onSpendShards={(amount) => setTotalShards(prev => Math.max(0, prev - amount))}
           />
         )}
 
@@ -181,7 +191,6 @@ function App() {
             <PauseMenu
               isOpen={isPaused}
               onResume={() => setIsPaused(false)}
-              onSettings={() => console.log("Settings clicked")}
               onQuit={handleQuitRun}
             />
           </>

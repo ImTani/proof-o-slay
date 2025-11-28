@@ -1,8 +1,13 @@
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { GlassPanel } from './ui/GlassPanel';
 import { NeonButton } from './ui/NeonButton';
 import { CyberIcon } from './ui/CyberIcon';
+import { StatusBadge } from './ui/StatusBadge';
+import { ScanlineEffect } from './ui/ScanlineEffect';
 import { FlaskConical, Heart, Clover, Zap, Key } from 'lucide-react';
+import { SPRING_CONFIG, STIFF_SPRING, COLORS, SPACING, TYPOGRAPHY, HOVER_STATES } from '../lib/designTokens';
+import { getOwnedConsumables, addOwnedConsumable } from '../lib/consumablesStorage';
 
 interface ConsumableItem {
     id: string;
@@ -22,9 +27,7 @@ const CONSUMABLES: ConsumableItem[] = [
     { id: 'starting_gold', name: 'Cache Key', description: '+500 Starting XP', cost: 50, icon: Key, color: 'text-blue-400', glow: 'blue' },
 ];
 
-// Spring physics constants for AAA feel (matching ForgeUI)
-const SPRING_CONFIG = { type: "spring" as const, stiffness: 300, damping: 30 };
-const STIFF_SPRING = { type: "spring" as const, stiffness: 400, damping: 25 };
+// Design tokens imported from centralized file
 
 interface ConsumablesShopProps {
     shards: number;
@@ -33,6 +36,28 @@ interface ConsumablesShopProps {
 }
 
 export const ConsumablesShop = ({ shards, onPurchase, ownedItems }: ConsumablesShopProps) => {
+    const [localOwned, setLocalOwned] = useState<string[]>([]);
+
+    // Load owned consumables from localStorage on mount
+    useEffect(() => {
+        setLocalOwned(getOwnedConsumables());
+    }, []);
+
+    const handlePurchase = (itemId: string, cost: number) => {
+        if (shards < cost) return;
+        if (allOwned.includes(itemId)) return;
+
+        // Add to localStorage
+        addOwnedConsumable(itemId);
+        setLocalOwned([...localOwned, itemId]);
+
+        // Call parent callback to deduct shards
+        onPurchase(itemId, cost);
+    };
+
+    // Combine prop-based ownership with localStorage ownership
+    const allOwned = [...new Set([...ownedItems, ...localOwned])];
+
     return (
         <div className="w-full font-neon p-8">
             {/* Shop Header - Simple Description */}
@@ -55,8 +80,8 @@ export const ConsumablesShop = ({ shards, onPurchase, ownedItems }: ConsumablesS
                         item={item}
                         index={index}
                         canAfford={shards >= item.cost}
-                        isOwned={ownedItems.includes(item.id)}
-                        onBuy={() => onPurchase(item.id, item.cost)}
+                        isOwned={allOwned.includes(item.id)}
+                        onBuy={() => handlePurchase(item.id, item.cost)}
                     />
                 ))}
             </div>
@@ -111,11 +136,7 @@ const ShopCard = ({
                 <div className="absolute inset-0 bg-[linear-gradient(rgba(0,243,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(0,243,255,0.02)_1px,transparent_1px)] bg-[size:20px_20px]" />
 
                 {/* Scanline on Hover */}
-                <motion.div
-                    className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-500/5 to-transparent opacity-0 group-hover:opacity-100 pointer-events-none"
-                    animate={{ y: ['-100%', '100%'] }}
-                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                />
+                <ScanlineEffect type="animated" color="cyan-500" opacity={0.05} duration={2} />
 
                 {/* Card Content */}
                 <div className="relative z-10 p-6 flex flex-col gap-4">
@@ -138,44 +159,11 @@ const ShopCard = ({
 
                         {/* Status Badge */}
                         {isOwned ? (
-                            <motion.div
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1, transition: STIFF_SPRING }}
-                                className="px-2 py-1 bg-green-500/20 text-green-400 text-[10px] font-bold uppercase tracking-wider border border-green-500/30 rounded"
-                            >
-                                <div className="flex items-center gap-1.5">
-                                    <span className="w-1 h-1 bg-green-500 rounded-full animate-pulse" />
-                                    OWNED
-                                </div>
-                            </motion.div>
+                            <StatusBadge variant="owned" pulse={true} />
                         ) : !canAfford ? (
-                            <motion.div
-                                initial={{ scale: 0 }}
-                                animate={{ scale: 1, transition: STIFF_SPRING }}
-                                className="px-2 py-1 bg-red-500/20 text-red-400 text-[10px] font-bold uppercase tracking-wider border border-red-500/30 rounded"
-                            >
-                                <div className="flex items-center gap-1.5">
-                                    <span className="w-1 h-1 bg-red-500 rounded-full" />
-                                    LOCKED
-                                </div>
-                            </motion.div>
+                            <StatusBadge variant="locked" />
                         ) : (
-                            <motion.div
-                                animate={{
-                                    opacity: [0.6, 1, 0.6]
-                                }}
-                                transition={{
-                                    duration: 2,
-                                    repeat: Infinity,
-                                    ease: "easeInOut"
-                                }}
-                                className="px-2 py-1 bg-cyan-500/10 text-cyan-400 text-[10px] font-bold uppercase tracking-wider border border-cyan-500/30 rounded"
-                            >
-                                <div className="flex items-center gap-1.5">
-                                    <span className="w-1 h-1 bg-cyan-500 rounded-full animate-pulse" />
-                                    AVAILABLE
-                                </div>
-                            </motion.div>
+                            <StatusBadge variant="available" pulse={true} />
                         )}
                     </div>
 
@@ -249,7 +237,7 @@ const ShopCard = ({
                 </div>
 
                 {/* Item ID Footer */}
-                <div className="relative z-10 px-4 py-2 bg-black/30 border-t border-white/5">
+                <div className="relative z-10 px-4 py-2 bg-black/30 border-t border-white/10">
                     <span className="text-[9px] font-mono text-cyan-500/30 tracking-widest uppercase">
                         ID: {item.id.toUpperCase()}
                     </span>

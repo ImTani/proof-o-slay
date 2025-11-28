@@ -39,6 +39,12 @@ module proof_o_slay::proof_o_slay {
     
     /// Maximum shards that can be forged at once (prevents abuse)
     const MAX_SHARDS: u64 = 10000;
+
+    /// Initial supply to mint into treasury (1M tokens)
+    const INITIAL_SUPPLY: u64 = 1000000000000000; // 1,000,000 * 10^9
+    
+    /// Insufficient treasury balance
+    const EInsufficientTreasuryBalance: u64 = 8;
     
     /// Maximum level for all NFTs
     const MAX_LEVEL: u64 = 5;
@@ -144,9 +150,10 @@ module proof_o_slay::proof_o_slay {
     
     /// Initialize the SLAY token and create the Treasury
     /// Called once when the module is published
+    // Redefining init to handle minting correctly
     fun init(witness: PROOF_O_SLAY, ctx: &mut TxContext) {
         // Create the SLAY currency with metadata
-        let (treasury_cap, metadata) = coin::create_currency(
+        let (mut treasury_cap, metadata) = coin::create_currency(
             witness,
             9, // decimals
             b"SLAY", // symbol
@@ -159,15 +166,21 @@ module proof_o_slay::proof_o_slay {
         // Freeze the metadata (immutable)
         transfer::public_freeze_object(metadata);
         
-        // Transfer TreasuryCap to deployer for minting control
-        transfer::public_transfer(treasury_cap, tx_context::sender(ctx));
-        
-        // Create shared Treasury for collecting upgrade payments
-        let treasury = Treasury {
+        // Create shared Treasury
+        let mut treasury = Treasury {
             id: object::new(ctx),
             balance: balance::zero()
         };
+        
+        // Mint initial supply
+        let initial_coin = coin::mint(&mut treasury_cap, INITIAL_SUPPLY, ctx);
+        balance::join(&mut treasury.balance, coin::into_balance(initial_coin));
+        
+        // Share the treasury
         transfer::share_object(treasury);
+        
+        // Transfer TreasuryCap to deployer for minting control (and future top-ups)
+        transfer::public_transfer(treasury_cap, tx_context::sender(ctx));
     }
 
     // ======= Helper Functions =======
@@ -212,25 +225,44 @@ module proof_o_slay::proof_o_slay {
     // ======= Forge System (Honor System) =======
     
     /// Forge Glimmering Shards into SLAY tokens
-    /// @param treasury_cap: Minting capability (owned by deployer)
+    /// @param treasury: Shared Treasury to withdraw tokens from
     /// @param shards: Number of shards to forge (1:1 ratio)
     /// @param ctx: Transaction context
     /// 
     /// Honor system: Frontend sends shard count, no backend verification
     /// Production version would verify signature from backend
     public entry fun forge_tokens(
-        treasury_cap: &mut TreasuryCap<PROOF_O_SLAY>,
+        treasury: &mut Treasury,
         shards: u64,
         ctx: &mut TxContext
     ) {
         // Validate shard amount
         assert!(shards > 0 && shards <= MAX_SHARDS, EInvalidShardAmount);
         
-        // Mint SLAY tokens (1 shard = 1 SLAY)
-        let minted = coin::mint(treasury_cap, shards, ctx);
+        // Check treasury balance
+        assert!(balance::value(&treasury.balance) >= shards, EInsufficientTreasuryBalance);
+        
+        // Withdraw tokens from treasury (1 shard = 1 SLAY)
+        // Note: shards is raw amount here, assuming 1:1 with base units?
+        // In init we minted 1M * 10^9.
+        // If shards input is 100, we want 100 SLAY (100 * 10^9) or just 100 raw units?
+        // The frontend sends `toRawSlayAmount(pendingShards)` which is shards * 10^9.
+        // So `shards` here is the raw amount (MIST equivalent).
+        
+        let reward_balance = balance::split(&mut treasury.balance, shards);
+        let reward_coin = coin::from_balance(reward_balance, ctx);
         
         // Transfer tokens to sender
-        transfer::public_transfer(minted, tx_context::sender(ctx));
+        transfer::public_transfer(reward_coin, tx_context::sender(ctx));
+    }
+    
+    /// Fund the treasury with more tokens (admin only)
+    public entry fun fund_treasury(
+        treasury: &mut Treasury,
+        payment: Coin<PROOF_O_SLAY>,
+        _ctx: &mut TxContext
+    ) {
+        balance::join(&mut treasury.balance, coin::into_balance(payment));
     }
 
     // ======= Power Ring (Damage +20% per level, exponential) =======

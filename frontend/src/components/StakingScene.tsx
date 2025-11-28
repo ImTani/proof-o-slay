@@ -1,8 +1,13 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
+import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
+import { Transaction } from '@mysten/sui/transactions';
+import { CONTRACT_CONFIG } from '../lib/suiClient';
 import { NeonButton } from './ui/NeonButton';
 import { CyberIcon } from './ui/CyberIcon';
-import { Clock, TrendingUp, AlertTriangle, ArrowRight } from 'lucide-react';
+import { ScanlineEffect } from './ui/ScanlineEffect';
+import { TrendingUp, AlertTriangle, ArrowRight } from 'lucide-react';
+import { SPRING_CONFIG, STIFF_SPRING, HOVER_STATES, ACTIVE_STATES, COLORS, SPACING, TYPOGRAPHY } from '../lib/designTokens';
 
 interface StakingSceneProps {
     balance: number;
@@ -10,28 +15,17 @@ interface StakingSceneProps {
     onBack: () => void;
 }
 
-// Spring physics constants for AAA feel (matching ForgeUI & ConsumablesShop)
-const SPRING_CONFIG = { type: "spring" as const, stiffness: 300, damping: 30 };
-const STIFF_SPRING = { type: "spring" as const, stiffness: 400, damping: 25 };
-
-// Extracted hover configs for consistency
-const SUBTLE_HOVER = {
-    scale: 1.015,
-    borderColor: 'rgba(74, 222, 128, 0.4)',
-    transition: STIFF_SPRING
-};
-
-const STAT_ROW_HOVER = {
-    x: 3,
-    backgroundColor: 'rgba(74, 222, 128, 0.05)',
-    borderLeft: '2px solid rgba(74, 222, 128, 0.5)',
-    paddingLeft: '12px',
-    transition: STIFF_SPRING
-};
+// Design tokens imported from centralized file
 
 export const StakingScene: React.FC<StakingSceneProps> = ({ balance, onStakeConfirmed }) => {
     const [stakeAmount, setStakeAmount] = useState<number>(100);
     const [selectedDuration, setSelectedDuration] = useState<number>(15);
+    const [validationError, setValidationError] = useState<string | null>(null);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const currentAccount = useCurrentAccount();
+    const { mutate: signAndExecute } = useSignAndExecuteTransaction();
 
     const durations = [
         { minutes: 10, multiplier: 1.5, label: 'SAFE', color: 'blue', tier: 'TIER.1', badge: 'LOW RISK' },
@@ -44,8 +38,91 @@ export const StakingScene: React.FC<StakingSceneProps> = ({ balance, onStakeConf
 
     const handleStakeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = parseInt(e.target.value);
-        if (!isNaN(val)) {
-            setStakeAmount(Math.min(Math.max(val, 0), 10000)); // Cap at 10k for safety
+
+        // Clear previous error
+        setValidationError(null);
+
+        if (e.target.value === '' || e.target.value === '0') {
+            setValidationError('Amount must be greater than 0');
+            setStakeAmount(0);
+            return;
+        }
+
+        if (isNaN(val)) {
+            setValidationError('Please enter a valid number');
+            return;
+        }
+
+        if (val < 0) {
+            setValidationError('Amount must be greater than 0');
+            return;
+        }
+
+        if (val > balance) {
+            setValidationError('Insufficient $SLAY balance');
+            setStakeAmount(val);
+            return;
+        }
+
+        if (val > 10000) {
+            setValidationError('Maximum stake amount is 10,000 $SLAY');
+            setStakeAmount(10000);
+            return;
+        }
+
+        setStakeAmount(val);
+    };
+
+    const handleStakeTransaction = async () => {
+        if (!currentAccount || !CONTRACT_CONFIG.PACKAGE_ID) {
+            setError('Wallet not connected or contract not deployed');
+            return;
+        }
+
+        if (validationError || stakeAmount <= 0 || stakeAmount > balance) {
+            return;
+        }
+
+        setIsProcessing(true);
+        setError(null);
+
+        try {
+            const tx = new Transaction();
+            tx.setGasBudget(100000000);
+
+            // Split coins for payment
+            const [paymentCoin] = tx.splitCoins(tx.gas, [
+                tx.pure.u64(stakeAmount * 1_000_000_000)
+            ]);
+
+            // Call stake_for_run
+            tx.moveCall({
+                target: `${CONTRACT_CONFIG.PACKAGE_ID}::proof_o_slay::stake_for_run`,
+                arguments: [
+                    tx.object(CONTRACT_CONFIG.TREASURY_ID),
+                    paymentCoin,
+                    tx.pure.u8(selectedDuration)
+                ]
+            });
+
+            signAndExecute(
+                { transaction: tx },
+                {
+                    onSuccess: () => {
+                        setIsProcessing(false);
+                        onStakeConfirmed(stakeAmount, selectedDuration);
+                    },
+                    onError: (err) => {
+                        console.error('Stake failed:', err);
+                        setError('Transaction failed');
+                        setIsProcessing(false);
+                    }
+                }
+            );
+        } catch (err) {
+            console.error('Error:', err);
+            setError('Internal error');
+            setIsProcessing(false);
         }
     };
 
@@ -63,7 +140,7 @@ export const StakingScene: React.FC<StakingSceneProps> = ({ balance, onStakeConf
                     animate={{ opacity: 1, y: 0 }}
                     transition={SPRING_CONFIG}
                 >
-                    <p className="text-cyan-500/60 font-mono text-sm leading-relaxed max-w-3xl">
+                    <p className={`text-${COLORS.system.primaryMuted} font-mono ${TYPOGRAPHY.body.normal} max-w-3xl`}>
                         Stake $SLAY tokens on your survival capability. High risk, high reward. The longer you survive, the greater your multiplier.
                     </p>
                 </motion.div>
@@ -80,16 +157,20 @@ export const StakingScene: React.FC<StakingSceneProps> = ({ balance, onStakeConf
 
                         <div className="flex flex-col gap-6 h-full">
                             {/* Tech Decorator */}
-                            <div className="text-[9px] font-mono text-cyan-500/30 tracking-widest uppercase flex items-center gap-2">
-                                <span className="w-1 h-1 bg-cyan-500 rounded-full animate-pulse" />
+                            <div className={`${TYPOGRAPHY.tech.decorator} text-${COLORS.system.primarySubtle} flex items-center ${SPACING.inline}`}>
+                                <span className={`w-1 h-1 bg-${COLORS.system.primary} rounded-full animate-pulse`} />
                                 INPUT.CONFIG :: STAKE.PARAMETERS
                             </div>
                             {/* Amount Input with Pulsing Glow */}
                             <div className="flex flex-col gap-3">
-                                <label className="text-sm text-cyan-500/60 uppercase tracking-wider font-mono">Stake Amount</label>
+                                <label className={`${TYPOGRAPHY.body.normal} text-${COLORS.system.primaryMuted} uppercase tracking-wider font-mono`}>Stake Amount</label>
                                 <motion.div
                                     className="relative"
-                                    whileHover={SUBTLE_HOVER}
+                                    whileHover={{
+                                        scale: 1.015,
+                                        borderColor: 'rgba(6, 182, 212, 0.4)',
+                                        transition: STIFF_SPRING
+                                    }}
                                 >
                                     <motion.input
                                         type="number"
@@ -103,12 +184,25 @@ export const StakingScene: React.FC<StakingSceneProps> = ({ balance, onStakeConf
                                             ]
                                         }}
                                         transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
-                                        className="w-full bg-black/10 border border-cyan-500/30 rounded-sm p-4 text-2xl font-mono text-white focus:border-cyan-400 focus:outline-none focus:shadow-[0_0_25px_rgba(6,182,212,0.5)] focus:scale-[1.015] transition-all"
+                                        className={`w-full bg-black/10 border border-${COLORS.system.primarySubtle} rounded-sm p-4 text-2xl font-mono text-white focus:border-${COLORS.system.primary} focus:outline-none focus:shadow-[0_0_25px_rgba(6,182,212,0.5)] focus:scale-[1.015] transition-all`}
                                     />
-                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-cyan-500/50 font-bold font-mono">
+                                    <div className={`absolute right-4 top-1/2 -translate-y-1/2 text-${COLORS.currency.slay.muted} font-bold font-mono`}>
                                         $SLAY
                                     </div>
                                 </motion.div>
+
+                                {/* Validation Error Message */}
+                                {validationError && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: -5 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={STIFF_SPRING}
+                                        className="text-red-500 text-xs font-mono flex items-center gap-2 mt-2"
+                                    >
+                                        <AlertTriangle size={12} />
+                                        {validationError}
+                                    </motion.div>
+                                )}
 
                                 {/* Quick Preset Buttons */}
                                 <div className="flex gap-2">
@@ -126,7 +220,7 @@ export const StakingScene: React.FC<StakingSceneProps> = ({ balance, onStakeConf
                                             }}
                                             whileTap={{ scale: 0.95, transition: STIFF_SPRING }}
                                             onClick={() => setStakeAmount(amt)}
-                                            className="flex-1 px-3 py-1.5 text-xs border border-cyan-500/20 rounded-sm text-cyan-400 transition-colors font-mono"
+                                            className={`flex-1 px-3 py-1.5 text-xs border border-${COLORS.system.primarySubtle} rounded-sm text-${COLORS.system.primary} transition-colors font-mono`}
                                         >
                                             {amt}
                                         </motion.button>
@@ -136,7 +230,7 @@ export const StakingScene: React.FC<StakingSceneProps> = ({ balance, onStakeConf
 
                             {/* Duration Selection with Status Badges */}
                             <div className="flex flex-col gap-3 flex-1">
-                                <label className="text-sm text-cyan-500/60 uppercase tracking-wider font-mono">Survival Target</label>
+                                <label className={`${TYPOGRAPHY.body.normal} text-${COLORS.system.primaryMuted} uppercase tracking-wider font-mono`}>Survival Target</label>
                                 <div className="grid grid-cols-3 gap-3 pb-3">
                                     {durations.map((d, idx) => (
                                         <motion.button
@@ -149,13 +243,13 @@ export const StakingScene: React.FC<StakingSceneProps> = ({ balance, onStakeConf
                                                 scale: 1.03,
                                                 transition: STIFF_SPRING
                                             }}
-                                            whileTap={{ scale: 0.97, transition: STIFF_SPRING }}
+                                            whileTap={ACTIVE_STATES.microScale}
                                             onClick={() => setSelectedDuration(d.minutes)}
                                             className={`
                                                     relative border rounded overflow-hidden group
                                                     ${selectedDuration === d.minutes
-                                                    ? 'border-green-400 bg-green-500/10 shadow-[0_0_20px_rgba(74,222,128,0.3)]'
-                                                    : 'border-white/10 hover:border-green-500/40 bg-black/20'}
+                                                    ? 'border-cyan-400 bg-cyan-500/10 shadow-[0_0_20px_rgba(6,182,212,0.3)]'
+                                                    : 'border-white/10 hover:border-cyan-500/40 bg-black/20'}
                                                     transition-all duration-300
                                                 `}
                                         >
@@ -163,23 +257,19 @@ export const StakingScene: React.FC<StakingSceneProps> = ({ balance, onStakeConf
                                             {selectedDuration === d.minutes && (
                                                 <motion.div
                                                     layoutId="duration-selection"
-                                                    className="absolute inset-0 bg-green-500/5"
+                                                    className="absolute inset-0 bg-cyan-500/5"
                                                     transition={STIFF_SPRING}
                                                 />
                                             )}
 
                                             {/* Scanline on Hover */}
-                                            <motion.div
-                                                className="absolute inset-0 bg-gradient-to-b from-transparent via-green-500/20 to-transparent opacity-0 group-hover:opacity-100 pointer-events-none"
-                                                animate={{ y: ['-100%', '100%'] }}
-                                                transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-                                            />
+                                            <ScanlineEffect type="animated" color="cyan-500" opacity={0.2} duration={1.5} />
 
                                             {/* Flex Column Layout - No Absolute Positioning */}
                                             <div className="relative z-10 flex flex-col h-full">
                                                 {/* Top Badge Row */}
                                                 <div className="flex justify-end p-2">
-                                                    {selectedDuration === d.minutes ? (
+                                                    {selectedDuration === d.minutes && (
                                                         <motion.div
                                                             initial={{ scale: 0 }}
                                                             animate={{ scale: 1 }}
@@ -187,30 +277,8 @@ export const StakingScene: React.FC<StakingSceneProps> = ({ balance, onStakeConf
                                                             className="px-2 py-1 bg-cyan-500/20 text-cyan-400 text-[10px] font-bold uppercase tracking-wider border border-cyan-500/30 rounded"
                                                         >
                                                             <div className="flex items-center gap-1.5">
-                                                                <span className="w-1 h-1 bg-green-500 rounded-full animate-pulse" />
+                                                                <span className="w-1 h-1 bg-cyan-500 rounded-full animate-pulse" />
                                                                 SELECTED
-                                                            </div>
-                                                        </motion.div>
-                                                    ) : (
-                                                        <motion.div
-                                                            initial={{ scale: 0 }}
-                                                            animate={{ scale: 1 }}
-                                                            transition={{ ...STIFF_SPRING, delay: 0.3 + idx * 0.06 }}
-                                                            className={`
-                                                                    px-2 py-1 text-[10px] font-bold uppercase tracking-wider border rounded
-                                                                    ${d.badge === 'LOW RISK'
-                                                                    ? 'bg-cyan-500/5 text-cyan-400/70 border-cyan-500/20'
-                                                                    : d.badge === 'RECOMMENDED'
-                                                                        ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'
-                                                                        : 'bg-cyan-500/5 text-cyan-400/70 border-cyan-500/20'
-                                                                }
-                                                                `}
-                                                        >
-                                                            <div className="flex items-center gap-1.5">
-                                                                <span
-                                                                    className={`w-1 h-1 rounded-full ${d.badge === 'RECOMMENDED' ? 'bg-cyan-500 animate-pulse' : 'bg-cyan-500/50'}`}
-                                                                />
-                                                                {d.badge}
                                                             </div>
                                                         </motion.div>
                                                     )}
@@ -220,10 +288,10 @@ export const StakingScene: React.FC<StakingSceneProps> = ({ balance, onStakeConf
                                                 <div className="flex-1 p-6 flex flex-col gap-5">
                                                     {/* Primary Value - MULTIPLIER with Neon Glow */}
                                                     <div className="flex flex-col gap-2">
-                                                        <div className="text-3xl font-black font-mono text-green-400 tabular-nums tracking-widest drop-shadow-[0_0_12px_rgba(74,222,128,0.5)]">
+                                                        <div className="text-3xl font-black font-mono text-cyan-400 tabular-nums tracking-widest drop-shadow-[0_0_12px_rgba(6,182,212,0.5)]">
                                                             {d.multiplier}x
                                                         </div>
-                                                        <div className="text-[10px] text-cyan-500/40 font-mono tracking-widest uppercase">
+                                                        <div className={`${TYPOGRAPHY.tech.label} text-${COLORS.system.primarySubtle}`}>
                                                             PAYOUT.MULTIPLIER
                                                         </div>
                                                     </div>
@@ -266,25 +334,25 @@ export const StakingScene: React.FC<StakingSceneProps> = ({ balance, onStakeConf
 
                         <div>
                             {/* Tech Decorator */}
-                            <div className="text-[9px] font-mono text-cyan-500/30 tracking-widest uppercase mb-6 flex items-center gap-2">
-                                <span className="w-1 h-1 bg-cyan-500 rounded-full animate-pulse" />
+                            <div className={`${TYPOGRAPHY.tech.decorator} text-${COLORS.system.primarySubtle} mb-6 flex items-center ${SPACING.inline}`}>
+                                <span className={`w-1 h-1 bg-${COLORS.system.primary} rounded-full animate-pulse`} />
                                 OUTPUT.PROJECTION :: RISK.CALC
                             </div>
 
                             <div className="flex flex-col gap-4 font-mono">
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-cyan-500/60">Initial Stake:</span>
+                                <div className={`flex justify-between ${TYPOGRAPHY.body.normal}`}>
+                                    <span className={`text-${COLORS.system.primaryMuted}`}>Initial Stake:</span>
                                     <span className="text-white">{stakeAmount} $SLAY</span>
                                 </div>
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-cyan-500/60">Multiplier:</span>
-                                    <span className="text-green-400 drop-shadow-[0_0_8px_rgba(74,222,128,0.4)]">{currentMultiplier}x</span>
+                                <div className={`flex justify-between ${TYPOGRAPHY.body.normal}`}>
+                                    <span className={`text-${COLORS.system.primaryMuted}`}>Multiplier:</span>
+                                    <span className={`text-${COLORS.system.primary} drop-shadow-[0_0_8px_rgba(6,182,212,0.5)]`}>{currentMultiplier}x</span>
                                 </div>
                                 <motion.div
-                                    initial={{ opacity: 0, scaleX: 0 }}
-                                    animate={{ opacity: 1, scaleX: 1 }}
-                                    transition={{ ...SPRING_CONFIG, delay: 0.6 }}
-                                    className="h-px bg-green-500/30 my-2 origin-left"
+                                    initial={{ scaleX: 0 }}
+                                    animate={{ scaleX: 1 }}
+                                    transition={{ ...SPRING_CONFIG, delay: 0.5 }}
+                                    className="h-px bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent my-2"
                                 />
                                 <motion.div
                                     initial={{ opacity: 0, y: 10 }}
@@ -292,8 +360,8 @@ export const StakingScene: React.FC<StakingSceneProps> = ({ balance, onStakeConf
                                     transition={{ ...SPRING_CONFIG, delay: 0.65 }}
                                     className="flex justify-between items-end"
                                 >
-                                    <span className="text-cyan-500/60 text-sm">Potential Payout:</span>
-                                    <span className="text-3xl font-bold text-green-400 tabular-nums drop-shadow-[0_0_15px_rgba(74,222,128,0.5)]">
+                                    <span className={`text-${COLORS.system.primaryMuted} ${TYPOGRAPHY.body.normal}`}>Potential Payout:</span>
+                                    <span className={`${TYPOGRAPHY.heading.large} text-${COLORS.system.primary} ${TYPOGRAPHY.tech.monospace} drop-shadow-[0_0_15px_rgba(6,182,212,0.5)]`}>
                                         {potentialPayout}
                                     </span>
                                 </motion.div>
@@ -332,17 +400,17 @@ export const StakingScene: React.FC<StakingSceneProps> = ({ balance, onStakeConf
                                 initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ ...SPRING_CONFIG, delay: 0.75 }}
-                                whileHover={{ scale: 1.02, transition: STIFF_SPRING }}
-                                whileTap={{ scale: 0.96, transition: { type: "spring", stiffness: 500, damping: 30 } }}
+                                whileHover={HOVER_STATES.buttonScale}
+                                whileTap={ACTIVE_STATES.microScale}
                             >
                                 <NeonButton
                                     variant="success"
                                     size="lg"
                                     className="w-full justify-center text-lg tracking-widest"
-                                    onClick={() => onStakeConfirmed(stakeAmount, selectedDuration)}
-                                    disabled={stakeAmount > balance || stakeAmount <= 0}
+                                    onClick={handleStakeTransaction}
+                                    disabled={isProcessing || stakeAmount > balance || stakeAmount <= 0 || !currentAccount}
                                 >
-                                    CONFIRM STAKE
+                                    {isProcessing ? 'PROCESSING...' : 'CONFIRM STAKE'}
                                 </NeonButton>
                             </motion.div>
                         </div>
@@ -354,10 +422,10 @@ export const StakingScene: React.FC<StakingSceneProps> = ({ balance, onStakeConf
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.8 }}
-                    className="text-[10px] text-white/30 text-center font-mono tracking-wider flex items-center justify-center gap-2"
+                    className={`${TYPOGRAPHY.tech.label} text-white/30 text-center flex items-center justify-center ${SPACING.inline}`}
                 >
                     <motion.div
-                        className="w-1 h-1 bg-green-500 rounded-full"
+                        className={`w-1 h-1 bg-${COLORS.system.primary} rounded-full`}
                         animate={{ opacity: [0.3, 1, 0.3] }}
                         transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                     />
